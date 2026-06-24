@@ -1,0 +1,5 @@
+numpy
+pandas
+pyyaml
+# LLM 어댑터는 표준 라이브러리 http 로도 가능. 외부 SDK 사용 시 여기에 추가.
+# (모델/endpoint 는 사용자가 config 로 지정 — 기본 provider SDK 강제 안 함)

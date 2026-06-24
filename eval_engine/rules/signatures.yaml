@@ -1,0 +1,50 @@
+# Layer2 진단 signature — feature 조합 → named 고장 모드. 선언형.
+# when_all: 모두 발화해야 / when_metric: 수치 조건 / scope: 적용 범위(item_class 등)
+# status_hint: 기본 심각도(bin_taxonomy 로 변조됨) / action_ko: 코멘트 골격 / evidence: 근거 템플릿
+version: ev1
+signatures:
+  - id: WIDE_DISTRIBUTION
+    when_metric: { spread_norm: ">spread_norm_warn" }
+    status_hint: MAJOR
+    action_ko: "산포가 spec 폭 대비 넓음 — 공정 변동 점검"
+    evidence: ["spread_norm {spread_norm}"]
+
+  - id: SEVERE_OUTLIER
+    when_metric: { outlier_ratio: ">outlier_ratio_bad" }
+    status_hint: MAJOR
+    action_ko: "outlier 성 fail 비율 높음 — 개별 die/contact 확인, retest 권장"
+    evidence: ["outlier_ratio {outlier_ratio}"]
+
+  - id: TAIL_RISK
+    when_metric: { skewness: "abs>skew_warn", spec_margin_low: "<spec_margin_warn" }
+    status_hint: MAJOR
+    action_ko: "한쪽 꼬리가 spec 근접 — centering/방향성 trim 검토"
+    evidence: ["skewness {skewness}", "nearest {nearest_spec_side}"]
+
+  - id: EQUIPMENT_SUSPECT
+    when_metric: { site_cpk_delta: ">0.5" }
+    status_hint: MAJOR
+    action_ko: "site 간 편차 큼 — golden unit 재측정 / handler·site correlation"
+    evidence: ["site_cpk_delta {site_cpk_delta}"]
+
+  - id: EDGE_FAIL
+    when_metric: { edge_fail_ratio: ">edge_fail_ratio_warn" }
+    status_hint: MAJOR
+    action_ko: "wafer edge 불량 집중 — uniformity/edge 보정, 모과제 동일유형 확인"
+    evidence: ["edge_fail_ratio {edge_fail_ratio}"]
+
+  - id: SPEC_TOO_TIGHT
+    when_metric: { spread_norm: "<spread_norm_warn", cpk: "<cpk_warn" }
+    when_all: []
+    status_hint: MINOR
+    action_ko: "산포 작고 중앙인데 cpk 낮음 — spec margin 자체 검토(spec_review)"
+    evidence: ["cpk {cpk}", "spread_norm {spread_norm}"]
+
+  - id: GROSS_FAIL
+    when_metric: { yield: "<0.5" }
+    status_hint: CRITICAL
+    action_ko: "불량률 매우 높음 — 설계/마스크 등 근본 원인 점검"
+    evidence: ["yield {yield}"]
+
+# 보류(구현 시 추가): SUBPOP_GAP(cdf_gap/density_gap), CODE_RAIL(code_edge_hit/limit_hit_ratio),
+#   BIDIR_TAIL(tail 양방향), TRIM_INEFFECTIVE/RETEST_RECOVERY(family)
