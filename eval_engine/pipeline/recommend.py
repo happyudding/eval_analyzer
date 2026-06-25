@@ -1,21 +1,61 @@
-"""L5 Recommend — 룰 골격 + 선례(precedent) + LLM 합성 → 분석방향 comment.
+"""L5 Recommend — 룰 골격 + 선례(precedent) + (옵션) LLM 합성 → 분석방향 comment.
 
-find_precedents: docs/DB_SCHEMA §9 — (bin + value_type + item명 퍼지≥config.PRECEDENT_NAME_SIMILARITY)
+find_precedents: docs/DB_SCHEMA §9 — (bin + value_type + item명 퍼지>=PRECEDENT_NAME_SIMILARITY)
   로 과거 case_outcome/label 회수. store.search_precedents(...) 사용.
 make_comment:
-  - 입력: verdict(status/signature) + evidence + 선례(action/condition/result/comment).
-  - LLM off(config.EVAL_LLM_ENABLED=False) 또는 실패 → 룰/선례 기반 **템플릿 코멘트** fallback.
+  - LLM off(config.EVAL_LLM_ENABLED=False) 또는 실패 → 룰/선례 기반 템플릿 코멘트 fallback.
   - LLM on → llm_client.complete(prompt) 로 자연어 합성(모델은 사용자 지정).
-  - 예: "site 3 에서만 튐, golden unit 재측정 권장 (과거 retest→정상 이력)".
 """
-from .. import store, config
-from .. import llm_client
+from .. import store, llm_client
+from ._rules import signatures_doc
+
+_RESULT_KO = {"recovered_normal": "정상", "confirmed_defective": "진성불량",
+              "improved": "개선", "pending": "보류"}
 
 
 def find_precedents(case_ctx: dict, sig_result: dict) -> list:
-    raise NotImplementedError("store.search_precedents (DB_SCHEMA §9) 구현")
+    return store.search_precedents(
+        case_ctx["bin"], case_ctx["value_type"], case_ctx["item_canonical"],
+        family_product=case_ctx.get("family_product"),
+        exclude_case_id=case_ctx.get("case_id"))
+
+
+def _template_comment(case_ctx, verdict, sig_result, precedents) -> str:
+    by_id = {s["id"]: s for s in signatures_doc()["signatures"]}
+    primary = verdict.get("primary_signature")
+    base = by_id[primary].get("action_ko") if primary in by_id else None
+    if not base:
+        base = "추가 데이터 확인 필요"
+    if precedents:
+        top = precedents[0]
+        if top.get("action") and top.get("result"):
+            res = _RESULT_KO.get(top["result"], top["result"])
+            base += f" (과거 {top['action']}→{res} 이력)"
+    return base
+
+
+def _build_prompt(case_ctx, verdict, sig_result, precedents, template) -> str:
+    lines = [
+        "반도체 fail item 분석방향 코멘트를 한국어 한 문장으로 작성하라.",
+        f"item: {case_ctx.get('item_canonical')} / class: {case_ctx.get('item_class')}",
+        f"status: {verdict.get('status')} / primary: {verdict.get('primary_signature')}",
+        f"secondary: {', '.join(verdict.get('secondary_signatures', []))}",
+        f"룰 골격: {template}",
+    ]
+    if precedents:
+        p = precedents[0]
+        lines.append(f"선례: action={p.get('action')} result={p.get('result')} "
+                     f"comment={p.get('human_comment')}")
+    return "\n".join(lines)
 
 
 def make_comment(case_ctx: dict, verdict: dict, sig_result: dict, precedents: list,
                  *, model_version: str | None = None) -> str:
-    raise NotImplementedError("템플릿 fallback + (옵션) LLM 합성 구현")
+    template = _template_comment(case_ctx, verdict, sig_result, precedents)
+    if llm_client.is_enabled():
+        try:
+            prompt = _build_prompt(case_ctx, verdict, sig_result, precedents, template)
+            return llm_client.complete(prompt, model_version=model_version)
+        except Exception:
+            pass  # LLM 실패 → 템플릿 fallback
+    return template

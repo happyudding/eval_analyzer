@@ -14,6 +14,11 @@ default:
   spec_margin_warn: 1.0     # σ 단위 여유 (작을수록 위험)
   edge_fail_ratio_warn: 2.0 # edge 영역 fail 집중 배수
   n_min: 20                 # min-n 가드 (고차모멘트 룰)
+  bimodality_warn: 0.555    # Sarle's bimodality coefficient (5/9 권장값)
+  edge_region_pct: 0.8      # 반경 정규화 0~1 중 상위 20% = edge
+  center_region_pct: 0.3    # 반경 정규화 하위 30% = center
+  quadrant_imbalance_warn: 1.0
+  cpk_trump_yield_floor: 0.7  # trump: cpk<cpk_bad AND yield<이값 → CRITICAL 강제
 
 # 제품군별 override 예시 (필요 시 채움)
 product_type:
