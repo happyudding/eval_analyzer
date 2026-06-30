@@ -18,9 +18,10 @@ calibration 피드백. 노하우는 전부 (3)에 쌓인다. [3↔4] 변환기 =
 
 ## [1] INDEX
 **product_master** (제품당 1행)
-- product_name : 제품명(EDS 13자리). fail_case FK.
-- family_product : 상위 제품군(SOC PMIC/Memory PMIC…). cross-product 이력 비교 키(모과제).
-- product_type : MDDI/PMIC/TCON… spec·임계 분기.
+- product_name : PARTID 13자리. fail_case FK.
+- product_type : MDDI/PDDI/PMIC/SECURITY/TCON. spec·임계 분기.
+- family_product : product_type 별 허용 제품군(DB_SCHEMA §10, 드롭다운 1:1). cross-product 이력 비교 키(모과제).
+- pkg_type : 패키지 타입.
 - process : 공정(BCD1370F…). · inch : 8/12. · gross_die : 웨이퍼당 총 die. · fab_line : 생산라인.
 - tester / para : 제품 고정 속성.
 
@@ -38,12 +39,12 @@ calibration 피드백. 노하우는 전부 (3)에 쌓인다. [3↔4] 변환기 =
 
 **fail_case** (fail instance당 1행)
 - case_id : PK = sha256(product|lot|wafer|item_id|bin|revision). 재업로드 idempotent.
-- lot_id / wafer_number : 로트/웨이퍼(둘이 물리 웨이퍼). · bin : 불량 분류 번호(식별+의미).
-- revision : EVT 버전. · item_class : category_major|value_type|bin. ★룰 스코프 키.
+- lot_id / wafer_number(INTEGER) : 로트/웨이퍼(둘이 물리 웨이퍼). · bin : 불량 분류 번호(식별+의미).
+- revision : FLOAT(0/0.1/1.0/2.1…). · item_class : category_major|value_type|bin. ★룰 스코프 키.
 
 **ingest_run** (업로드당 1행)
-- run_id : 업로드 id(파이프라인 전 구간에 전파). · source_file : 업로드 파일.
-- temperature / corner(NN/SS/FF) : [req0] 세션 입력(우선 입력만, 분석 미사용).
+- run_id : 업로드 id(파이프라인 전 구간에 전파). · source_file : 업로드 파일. · edm_link : EDM 링크.
+- temperature(INTEGER) / corner(NN/SS/FF) : [req0] 세션 입력(우선 입력만, 분석 미사용).
 - analysis_key : (선택) report_server 역참조 — report.db 개편 예정이므로 의존 금지, 단순 링크용.
 
 ## [2] RAW MEASURE (raw_metrics, (case,run)당 1행)

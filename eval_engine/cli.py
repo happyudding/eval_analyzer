@@ -46,7 +46,7 @@ def _read_degrade_csv(path):
         raise ValueError("empty CSV")
     first = rows[0]
     meta = {k[len("meta_"):]: first[k] for k in first if k.startswith("meta_")}
-    meta.setdefault("revision", "EVT0")
+    meta.setdefault("revision", 0.0)
     items = []
     for r in rows:
         items.append({
@@ -107,8 +107,9 @@ def _cmd_run(argv):
         run_input["meta"].update(meta_overrides)
     else:
         raw_table = _read_raw_csv(path)
-        meta = {"product_name": "CLI_TEST", "product_type": "PMIC", "revision": "EVT0",
-                "lot_id": "CLI_LOT", "wafer_number": "CLI_W01", "source_file": path,
+        meta = {"product_name": "CLI_TEST", "product_type": "PMIC",
+                "family_product": "PMIC_ETC", "revision": 0.0,
+                "lot_id": "CLI_LOT", "wafer_number": 1, "source_file": path,
                 "ingested_by": "cli"}
         meta.update(meta_overrides)
         run_input = {"meta": meta, "raw_table": raw_table}
@@ -122,7 +123,7 @@ def _cmd_seed(argv):
     store.init_db()
     with open(path, newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
-    revision = "SEED"
+    revision = 0.0
     with store.get_conn() as conn:
         run_id = store.create_ingest_run(
             {"source_file": path, "ingested_by": "seed_cli"}, conn=conn)

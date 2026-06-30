@@ -31,14 +31,16 @@ report_server 가 df_honey 에서 아래 **중립 dict** 로 변환해 전달(ev
 ```python
 run_input = {
   "meta": {
-     "product_name": "S5E_XXXX_13",     # EDS 13자리
-     "family_product": "SOC PMIC",
-     "product_type": "PMIC",
-     "process": "BCD1370F", "revision": "EVT0",
+     "product_name": "S5E_XXXX_13",     # PARTID 13자리
+     "product_type": "PMIC",            # MDDI/PDDI/PMIC/SECURITY/TCON
+     "family_product": "SOC",           # product_type 별 1:1 허용값(미매칭 시 ValueError)
+     "pkg_type": "FCCSP",
+     "process": "BCD1370F", "revision": 0.1,   # FLOAT (0/0.1/1.0/2.1…)
      "inch": 12, "gross_die": 280, "fab_line": "L1",
      "tester": "T01", "para": "P01",
-     "lot_id": "LOT001", "wafer_number": "W03",
-     "temperature": 25.0,                # [req0] 입력만
+     "lot_id": "LOT001", "wafer_number": 3,     # INTEGER
+     "edm_link": "http://edm/...",       # EDM Link
+     "temperature": 25,                  # [req0] INTEGER, 입력만
      "corner": "NN",                     # [req0] NN/SS/FF
      "source_file": "....csv",
      "ingested_by": "honey_client",
@@ -96,7 +98,7 @@ run_input = { "meta": {...},
 ## 5. 서로가 필요한 것 (상호 의존 정리)
 **report_server → eval_analyzer 에 줘야 할 것:**
 - 트리거(파일 run 시 evaluate 호출).
-- run_input.meta (product/lot/wafer/process/revision/inch/gross_die/tester/para/temperature/corner).
+- run_input.meta (product/product_type/family_product/pkg_type/lot/wafer/process/revision/inch/gross_die/fab_line/tester/para/edm_link/temperature/corner).
 - run_input.raw_table (per-DUT 측정 + limit + 좌표 + bin) — cpk/산포/공간 계산의 원재료.
   ※ 현재 report_server 는 이걸 *버린다*(REPORT_SERVER_CONTEXT §5) → 결합 시 메모리로 넘겨주는 게 핵심.
 

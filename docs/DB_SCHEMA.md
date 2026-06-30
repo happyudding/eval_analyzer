@@ -33,9 +33,10 @@
 ## 2. 마스터 / 기준정보 DDL
 ```sql
 CREATE TABLE IF NOT EXISTS product_master (
-    product_name   TEXT PRIMARY KEY,         -- EDS 13자리
-    family_product TEXT,                     -- SOC PMIC / Memory PMIC ... (cross-product 이력 키)
-    product_type   TEXT,                     -- MDDI / PMIC / TCON ...
+    product_name   TEXT PRIMARY KEY,         -- PARTID 13자리
+    product_type   TEXT,                     -- MDDI / PDDI / PMIC / SECURITY / TCON
+    family_product TEXT,                     -- product_type 별 허용값(§10, 드롭다운 1:1). cross-product 이력 키
+    pkg_type       TEXT,                     -- 패키지 타입
     process        TEXT,                     -- 공정 (BCD1370F ...)
     inch           INTEGER,                  -- 8 / 12
     gross_die      INTEGER,
@@ -66,7 +67,7 @@ CREATE TABLE IF NOT EXISTS item_alias (
 CREATE TABLE IF NOT EXISTS item_spec (
     item_id        INTEGER NOT NULL,
     product_name   TEXT NOT NULL,
-    revision       TEXT NOT NULL,
+    revision       REAL NOT NULL,            -- FLOAT (0, 0.1, 1.0, 2.1 ...)
     lsl            REAL,
     usl            REAL,
     updated_at     INTEGER,
@@ -90,10 +91,11 @@ CREATE TABLE IF NOT EXISTS ingest_run (
     run_id         INTEGER PRIMARY KEY AUTOINCREMENT,
     product_name   TEXT,                     -- FK product_master
     lot_id         TEXT,
-    wafer_number   TEXT,
+    wafer_number   INTEGER,                  -- WAFER
     source_file    TEXT,
     analysis_key   TEXT,                     -- report.db 역참조(있으면)
-    temperature    REAL,                     -- [req0] 세션 입력 (우선 입력만, 분석 미사용)
+    edm_link       TEXT,                     -- EDM Link
+    temperature    INTEGER,                  -- [req0] 세션 입력 (우선 입력만, 분석 미사용)
     corner         TEXT,                     -- [req0] NN / SS / FF ...
     ingested_by    TEXT,
     created_at     INTEGER NOT NULL
@@ -110,11 +112,10 @@ CREATE TABLE IF NOT EXISTS fail_case (
     case_id        TEXT PRIMARY KEY,         -- = sha256(product_name|lot_id|wafer_number|item_id|bin|revision)
     product_name   TEXT NOT NULL,
     lot_id         TEXT,
-    wafer_number   TEXT,
+    wafer_number   INTEGER,
     item_id        INTEGER NOT NULL,         -- FK item_master
     bin            INTEGER,
-    Conner      
-    revision       TEXT,
+    revision       REAL,                     -- FLOAT (0, 0.1, 1.0, 2.1 ...)
     item_class     TEXT,                     -- = category_major|value_type|bin  ← ★룰 스코프 키
     created_at     INTEGER NOT NULL,
     updated_at     INTEGER,
@@ -286,6 +287,11 @@ category_major : TRIM | NON_TRIM
 value_type     : V | A | Hz | CODE | TCODE | P_F
 corner         : NN | SS | FF | (기타 코너)
 data_completeness : full | partial | low
+product_type   : MDDI | PDDI | PMIC | SECURITY | TCON
+family_product : (product_type 별 1:1 허용 — rules/product_taxonomy.yaml 에서 검증)
+                 MDDI: MX|AQUA|CHINA|MDDI_ETC · PMIC: SOC|MEMORY|DISPLAY|IF|PMIC_ETC
+                 SECURITY: NFC_ESE|ESE|Contactless|SECU_ETC · PDDI: LCD|PDDI_IT|QDOLED|PDDI_ETC
+                 TCON: TV|TCON_IT|TCON_ETC
 ```
 
 ## 11. 보류(미구현 — 필요 시 확장)

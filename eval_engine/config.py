@@ -14,6 +14,7 @@ THRESHOLDS_FILE = RULES_DIR / "thresholds.yaml"
 SIGNATURES_FILE = RULES_DIR / "signatures.yaml"
 BIN_TAXONOMY_FILE = RULES_DIR / "bin_taxonomy.yaml"
 ITEM_ALIAS_FILE = RULES_DIR / "item_alias.yaml"
+PRODUCT_TAXONOMY_FILE = RULES_DIR / "product_taxonomy.yaml"
 
 ENGINE_VERSION = os.environ.get("EVAL_ENGINE_VERSION", "ev1")
 
@@ -26,5 +27,10 @@ EVAL_LLM_TIMEOUT = float(os.environ.get("EVAL_LLM_TIMEOUT", "30"))
 
 # 선례(precedent) 매칭 — [req1] (bin + value_type + item명 퍼지)
 PRECEDENT_NAME_SIMILARITY = float(os.environ.get("EVAL_PRECEDENT_SIM", "0.70"))
+
+# ── 선례검색 백엔드 (교체형: sql 기본 | rag) ──────────────────────────────
+EVAL_PRECEDENT_BACKEND = os.environ.get("EVAL_PRECEDENT_BACKEND", "sql").lower()
+EVAL_PRECEDENT_RAG_ENDPOINT = os.environ.get("EVAL_PRECEDENT_RAG_ENDPOINT", "")
+EVAL_PRECEDENT_RAG_TOPK = int(os.environ.get("EVAL_PRECEDENT_RAG_TOPK", "5"))
 # min-n 가드
 N_MIN_HIGH_MOMENT = int(os.environ.get("EVAL_N_MIN", "20"))

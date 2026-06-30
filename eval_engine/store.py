@@ -12,8 +12,9 @@ from . import config
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS product_master (
-    product_name TEXT PRIMARY KEY, family_product TEXT, product_type TEXT, process TEXT,
-    inch INTEGER, gross_die INTEGER, fab_line TEXT, tester TEXT, para TEXT, updated_at INTEGER
+    product_name TEXT PRIMARY KEY, product_type TEXT, family_product TEXT, pkg_type TEXT,
+    process TEXT, inch INTEGER, gross_die INTEGER, fab_line TEXT, tester TEXT, para TEXT,
+    updated_at INTEGER
 );
 CREATE TABLE IF NOT EXISTS item_master (
     item_id INTEGER PRIMARY KEY AUTOINCREMENT, item_name_raw TEXT NOT NULL,
@@ -23,7 +24,7 @@ CREATE TABLE IF NOT EXISTS item_master (
 );
 CREATE TABLE IF NOT EXISTS item_alias (raw_name TEXT PRIMARY KEY, item_id INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS item_spec (
-    item_id INTEGER NOT NULL, product_name TEXT NOT NULL, revision TEXT NOT NULL,
+    item_id INTEGER NOT NULL, product_name TEXT NOT NULL, revision REAL NOT NULL,
     lsl REAL, usl REAL, updated_at INTEGER,
     PRIMARY KEY (item_id, product_name, revision)
 );
@@ -34,16 +35,16 @@ CREATE TABLE IF NOT EXISTS bin_taxonomy (
 );
 CREATE TABLE IF NOT EXISTS ingest_run (
     run_id INTEGER PRIMARY KEY AUTOINCREMENT, product_name TEXT, lot_id TEXT,
-    wafer_number TEXT, source_file TEXT, analysis_key TEXT,
-    temperature REAL, corner TEXT, ingested_by TEXT, created_at INTEGER NOT NULL
+    wafer_number INTEGER, source_file TEXT, analysis_key TEXT, edm_link TEXT,
+    temperature INTEGER, corner TEXT, ingested_by TEXT, created_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS run_case (
     run_id INTEGER NOT NULL, case_id TEXT NOT NULL, seen_at INTEGER NOT NULL,
     PRIMARY KEY (run_id, case_id)
 );
 CREATE TABLE IF NOT EXISTS fail_case (
-    case_id TEXT PRIMARY KEY, product_name TEXT NOT NULL, lot_id TEXT, wafer_number TEXT,
-    item_id INTEGER NOT NULL, bin INTEGER, revision TEXT, item_class TEXT,
+    case_id TEXT PRIMARY KEY, product_name TEXT NOT NULL, lot_id TEXT, wafer_number INTEGER,
+    item_id INTEGER NOT NULL, bin INTEGER, revision REAL, item_class TEXT,
     created_at INTEGER NOT NULL, updated_at INTEGER,
     UNIQUE(product_name, lot_id, wafer_number, item_id, bin, revision)
 );
@@ -142,19 +143,19 @@ def _scope(conn):
 
 def upsert_product_master(meta: dict, conn=None) -> None:
     sql = """INSERT INTO product_master
-             (product_name,family_product,product_type,process,inch,gross_die,
+             (product_name,product_type,family_product,pkg_type,process,inch,gross_die,
               fab_line,tester,para,updated_at)
-             VALUES (?,?,?,?,?,?,?,?,?,?)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?)
              ON CONFLICT(product_name) DO UPDATE SET
-               family_product=excluded.family_product, product_type=excluded.product_type,
-               process=excluded.process, inch=excluded.inch, gross_die=excluded.gross_die,
-               fab_line=excluded.fab_line, tester=excluded.tester, para=excluded.para,
-               updated_at=excluded.updated_at"""
+               product_type=excluded.product_type, family_product=excluded.family_product,
+               pkg_type=excluded.pkg_type, process=excluded.process, inch=excluded.inch,
+               gross_die=excluded.gross_die, fab_line=excluded.fab_line,
+               tester=excluded.tester, para=excluded.para, updated_at=excluded.updated_at"""
     with _scope(conn) as c:
-        c.execute(sql, (meta.get("product_name"), meta.get("family_product"),
-                        meta.get("product_type"), meta.get("process"), meta.get("inch"),
-                        meta.get("gross_die"), meta.get("fab_line"), meta.get("tester"),
-                        meta.get("para"), _now()))
+        c.execute(sql, (meta.get("product_name"), meta.get("product_type"),
+                        meta.get("family_product"), meta.get("pkg_type"),
+                        meta.get("process"), meta.get("inch"), meta.get("gross_die"),
+                        meta.get("fab_line"), meta.get("tester"), meta.get("para"), _now()))
 
 
 def resolve_item_id(raw_name: str, conn=None):
@@ -219,14 +220,15 @@ def get_bin_taxonomy(product_type, bin_number, conn=None):
 
 def create_ingest_run(meta, conn=None) -> int:
     sql = """INSERT INTO ingest_run
-             (product_name,lot_id,wafer_number,source_file,analysis_key,
+             (product_name,lot_id,wafer_number,source_file,analysis_key,edm_link,
               temperature,corner,ingested_by,created_at)
-             VALUES (?,?,?,?,?,?,?,?,?)"""
+             VALUES (?,?,?,?,?,?,?,?,?,?)"""
     with _scope(conn) as c:
         cur = c.execute(sql, (meta.get("product_name"), meta.get("lot_id"),
                               meta.get("wafer_number"), meta.get("source_file"),
-                              meta.get("analysis_key"), meta.get("temperature"),
-                              meta.get("corner"), meta.get("ingested_by"), _now()))
+                              meta.get("analysis_key"), meta.get("edm_link"),
+                              meta.get("temperature"), meta.get("corner"),
+                              meta.get("ingested_by"), _now()))
         return cur.lastrowid
 
 

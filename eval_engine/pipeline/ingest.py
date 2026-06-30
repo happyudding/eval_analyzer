@@ -33,6 +33,25 @@ UNIT_TO_VALUE_TYPE = {
 PHASE_TOKENS = {"init", "code", "trim", "p2", "p1", "final"}
 
 
+def _validate_product_meta(meta: dict) -> None:
+    """product_type ↔ family_product 조합을 product_taxonomy.yaml 로 강제 검증.
+
+    드롭다운 1:1 매칭 전제 — 허용표에 없는 조합이면 ValueError.
+    """
+    tax = load_yaml(str(config.PRODUCT_TAXONOMY_FILE))
+    product_type = meta.get("product_type")
+    family_product = meta.get("family_product")
+    allowed_types = tax.get("product_types") or []
+    if product_type not in allowed_types:
+        raise ValueError(
+            f"product_type '{product_type}' 은 허용값 {allowed_types} 에 없음")
+    allowed_families = (tax.get("family_product") or {}).get(product_type) or []
+    if family_product not in allowed_families:
+        raise ValueError(
+            f"family_product '{family_product}' 은 product_type '{product_type}' 의 "
+            f"허용값 {allowed_families} 에 없음")
+
+
 def _alias_map():
     try:
         doc = load_yaml(str(config.ITEM_ALIAS_FILE))
@@ -191,6 +210,7 @@ def _build_cases(meta, run_input, persist, conn):
 
 def ingest(run_input: dict, *, persist: bool = True) -> dict:
     meta = run_input["meta"]
+    _validate_product_meta(meta)
     if not persist:
         cases = _build_cases(meta, run_input, persist=False, conn=None)
         return {"run_id": None, "cases": cases}

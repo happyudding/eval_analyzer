@@ -1,12 +1,12 @@
 """L5 Recommend — 룰 골격 + 선례(precedent) + (옵션) LLM 합성 → 분석방향 comment.
 
-find_precedents: docs/DB_SCHEMA §9 — (bin + value_type + item명 퍼지>=PRECEDENT_NAME_SIMILARITY)
-  로 과거 case_outcome/label 회수. store.search_precedents(...) 사용.
+find_precedents: 선례검색을 precedent_client 어댑터에 위임(sql 기본 | rag 교체).
+  반환 dict 계약: action/result/human_comment, 관련도 내림차순. docs/PRECEDENT_RAG_HANDOFF.md.
 make_comment:
   - LLM off(config.EVAL_LLM_ENABLED=False) 또는 실패 → 룰/선례 기반 템플릿 코멘트 fallback.
   - LLM on → llm_client.complete(prompt) 로 자연어 합성(모델은 사용자 지정).
 """
-from .. import store, llm_client
+from .. import llm_client, precedent_client
 from ._rules import signatures_doc
 
 _RESULT_KO = {"recovered_normal": "정상", "confirmed_defective": "진성불량",
@@ -14,10 +14,7 @@ _RESULT_KO = {"recovered_normal": "정상", "confirmed_defective": "진성불량
 
 
 def find_precedents(case_ctx: dict, sig_result: dict) -> list:
-    return store.search_precedents(
-        case_ctx["bin"], case_ctx["value_type"], case_ctx["item_canonical"],
-        family_product=case_ctx.get("family_product"),
-        exclude_case_id=case_ctx.get("case_id"))
+    return precedent_client.search(case_ctx, sig_result)
 
 
 def _template_comment(case_ctx, verdict, sig_result, precedents) -> str:
