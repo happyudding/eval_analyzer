@@ -114,15 +114,14 @@ def _ingest_raw_table(meta, raw_table, persist, conn, alias):
         if not values:
             continue
 
-        # fail bin 집합: limit 위반 DUT 의 bin + non-pass bin
+        # fail bin 집합: 이 item 자체가 한계 위반(lo|hi) AND DUT 가 non-pass bin 인 (item,bin)만
+        # (report_server build_issue_table 의 (lo|hi|break) & non_pass 와 동일 의미 — Yield 기준 Issue)
         fail_bins = set()
         for v, b in zip(values, bins):
             lo = (lsl is not None) and (v < lsl)
             hi = (usl is not None) and (v > usl)
-            if lo or hi or (b is not None and b != PASS_BIN):
-                if b is not None:
-                    fail_bins.add(int(b))
-        fail_bins.discard(PASS_BIN)
+            if (lo or hi) and (b is not None and b != PASS_BIN):
+                fail_bins.add(int(b))
         if not fail_bins:
             continue
 

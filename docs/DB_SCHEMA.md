@@ -113,6 +113,7 @@ CREATE TABLE IF NOT EXISTS fail_case (
     wafer_number   TEXT,
     item_id        INTEGER NOT NULL,         -- FK item_master
     bin            INTEGER,
+    Conner      
     revision       TEXT,
     item_class     TEXT,                     -- = category_major|value_type|bin  ← ★룰 스코프 키
     created_at     INTEGER NOT NULL,
