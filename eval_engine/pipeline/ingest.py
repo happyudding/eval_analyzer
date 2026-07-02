@@ -1,6 +1,6 @@
 """L0 Ingest — run_input(메모리 raw) → 캐노니컬 fail_case 들.
 
-입력: docs/INTEGRATION_CONTRACT §3 (meta + raw_table[per-DUT] 또는 degrade items).
+입력: docs/INTEGRATION_CONTRACT §3 (meta + raw_df[신규 df 포맷] / raw_table[레거시] / degrade items).
 할 일:
   1. product_master / item_master / item_spec upsert (마스터).
   2. item 명 파싱: item_canonical(정규화) / item_base / item_phase, item_alias 해소.
@@ -15,6 +15,7 @@
   이 모드의 case_id 는 persist=True 재실행 시 달라질 수 있다(preview 전용).
 """
 import hashlib
+import math
 import re
 
 from .. import store
@@ -89,6 +90,48 @@ def _is_num(x):
     return isinstance(x, (int, float)) and not (isinstance(x, float) and x != x)  # NaN 제외
 
 
+def _num_or_none(v):
+    """숫자면 float, NaN/변환불가면 None."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return None if math.isnan(f) else f
+
+
+def _bin_or_none(v):
+    n = _num_or_none(v)
+    return int(n) if n is not None else None
+
+
+def _tno_norm(v):
+    """TNO/FAILTNO 비교용 정규화. 숫자면 int, 문자면 strip, 공란/NaN 이면 None(=무fail)."""
+    if v is None:
+        return None
+    if isinstance(v, float) and math.isnan(v):
+        return None
+    try:
+        return int(float(v))
+    except (TypeError, ValueError):
+        s = str(v).strip()
+        return s or None
+
+
+def _case_dict(meta, case_id, item_id, item_canonical, cat, value_type, bin_,
+               revision, lsl, usl, values, fail_mask, x_pos, y_pos, site, skewness=None):
+    """fail_case context dict (raw_table/raw_df 경로 공유 — 스키마 단일 소스)."""
+    return {
+        "case_id": case_id, "item_id": item_id, "item_canonical": item_canonical,
+        "category_major": cat, "value_type": value_type, "bin": bin_,
+        "revision": revision, "item_class": f"{cat}|{value_type}|{bin_}",
+        "product_type": meta.get("product_type"),
+        "family_product": meta.get("family_product"),
+        "lsl": lsl, "usl": usl, "skewness": skewness,
+        "values": values, "fail_mask": fail_mask,
+        "x_pos": x_pos, "y_pos": y_pos, "site": site,
+    }
+
+
 def _resolve_item_identity(raw_name, value_type, persist, conn, alias):
     item_canonical = alias.get(raw_name.strip(), _canonicalize(raw_name))
     base, phase = _parse_base_phase(item_canonical)
@@ -154,16 +197,70 @@ def _ingest_raw_table(meta, raw_table, persist, conn, alias):
             fail_mask = [b == bin_ for b in bins]
             case_id = store.make_case_id(meta.get("product_name"), meta.get("lot_id"),
                                          meta.get("wafer_number"), item_id, bin_, revision)
-            cases.append({
-                "case_id": case_id, "item_id": item_id, "item_canonical": item_canonical,
-                "category_major": cat, "value_type": value_type, "bin": bin_,
-                "revision": revision, "item_class": f"{cat}|{value_type}|{bin_}",
-                "product_type": meta.get("product_type"),
-                "family_product": meta.get("family_product"),
-                "lsl": lsl, "usl": usl, "skewness": None,
-                "values": values, "fail_mask": fail_mask,
-                "x_pos": x_pos, "y_pos": y_pos, "site": site,
-            })
+            cases.append(_case_dict(meta, case_id, item_id, item_canonical, cat,
+                                    value_type, bin_, revision, lsl, usl,
+                                    values, fail_mask, x_pos, y_pos, site))
+    return cases
+
+
+def _ingest_raw_df(meta, df, persist, conn, alias):
+    """신규 raw df 포맷(REPORT_GENERATOR_DATA_REQUEST) → fail_case 들. 컬럼 단위 처리.
+
+    레이아웃: columns[:7]=meta(SERIAL,SHOT,DUT,XPOS,YPOS,BIN,FAILTNO), [7:]=item.
+      row0=TSEQ(미사용) row1=TNO row2=UNIT row3=HILIM(USL) row4=LOLIM(LSL) row5+=측정.
+    fail 식별: FAILTNO(serial이 fail한 test의 TNO) == 그 item의 TNO → fail item, 그 serial BIN=fail bin.
+    per-DUT dict 미생성 — 컬럼을 병렬 배열로 직접 읽는다.
+    """
+    revision = meta.get("revision")
+    cols = list(df.columns)
+    item_cols = cols[7:]
+    tno_row, unit_row = df.iloc[1], df.iloc[2]
+    hilim_row, lolim_row = df.iloc[3], df.iloc[4]
+    data = df.iloc[5:]
+
+    x_all = [_num_or_none(v) for v in data["XPOS"]]
+    y_all = [_num_or_none(v) for v in data["YPOS"]]
+    bin_all = [_bin_or_none(v) for v in data["BIN"]]
+    failtno_all = [_tno_norm(v) for v in data["FAILTNO"]]
+
+    cases = []
+    for item in item_cols:
+        value_type = _classify_value_type(unit_row[item], item)
+        lsl, usl = _num_or_none(lolim_row[item]), _num_or_none(hilim_row[item])
+        tno_i = _tno_norm(tno_row[item])
+
+        values, x_pos, y_pos, bins, failtnos = [], [], [], [], []
+        for v, x, y, b, ft in zip(data[item], x_all, y_all, bin_all, failtno_all):
+            if not _is_num(v):
+                continue
+            values.append(float(v))
+            x_pos.append(x); y_pos.append(y); bins.append(b); failtnos.append(ft)
+        if not values:
+            continue
+
+        # fail bin: FAILTNO == 이 item 의 TNO 인 serial 의 BIN
+        fail_bins = set()
+        if tno_i is not None:
+            for b, ft in zip(bins, failtnos):
+                if ft == tno_i and b is not None:
+                    fail_bins.add(b)
+        if not fail_bins:
+            continue
+
+        item_id, item_canonical, cat = _resolve_item_identity(
+            item, value_type, persist, conn, alias)
+        if persist and revision is not None and (lsl is not None or usl is not None):
+            store.upsert_item_spec(item_id, meta.get("product_name"), revision,
+                                   lsl, usl, conn=conn)
+
+        site = [None] * len(values)
+        for bin_ in sorted(fail_bins):
+            fail_mask = [(ft == tno_i and b == bin_) for b, ft in zip(bins, failtnos)]
+            case_id = store.make_case_id(meta.get("product_name"), meta.get("lot_id"),
+                                         meta.get("wafer_number"), item_id, bin_, revision)
+            cases.append(_case_dict(meta, case_id, item_id, item_canonical, cat,
+                                    value_type, bin_, revision, lsl, usl,
+                                    values, fail_mask, x_pos, y_pos, site))
     return cases
 
 
@@ -198,8 +295,11 @@ def _ingest_degrade(meta, items, persist, conn, alias):
 
 def _build_cases(meta, run_input, persist, conn):
     alias = _alias_map()
+    raw_df = run_input.get("raw_df")
     raw_table = run_input.get("raw_table")
-    if raw_table:
+    if raw_df is not None:              # 신규 df 포맷 (DataFrame — 진리값 모호 → is not None)
+        cases = _ingest_raw_df(meta, raw_df, persist, conn, alias)
+    elif raw_table:
         cases = _ingest_raw_table(meta, raw_table, persist, conn, alias)
     else:
         cases = _ingest_degrade(meta, run_input["items"], persist, conn, alias)

@@ -3,14 +3,14 @@ from eval_engine import store
 
 
 def _seed_precedent(conn, *, product="P1", item_raw="VREF_TRIM", item_canon="vref_trim",
-                    value_type="V", bin_=18, family="SOC PMIC",
+                    value_type="V", bin_=18, family="SOC",
                     action="retest", result="recovered_normal", comment="과거 정상복귀"):
     store.upsert_product_master(
         {"product_name": product, "family_product": family, "product_type": "PMIC"}, conn=conn)
     item_id = store.upsert_item_master(item_canon, item_raw, None, None, "TRIM", None,
                                        value_type, None, conn=conn)
-    case_id = store.make_case_id(product, "L1", "W1", item_id, bin_, "EVT0")
-    store.upsert_fail_case(case_id, product, "L1", "W1", item_id, bin_, "EVT0",
+    case_id = store.make_case_id(product, "L1", 1, item_id, bin_, 0.0)
+    store.upsert_fail_case(case_id, product, "L1", 1, item_id, bin_, 0.0,
                            f"TRIM|{value_type}|{bin_}", conn=conn)
     label_id = store.insert_label(case_id, None, "MAJOR", "equipment", None, 0, 0,
                                   comment, "seed", None, "seed", conn=conn)
@@ -66,6 +66,20 @@ def test_search_precedents_excludes_self(fresh_db):
     assert len(res_all) == 1
     res_excl = store.search_precedents(18, "V", "vref_trim", exclude_case_id=case_id)
     assert res_excl == []
+
+
+def test_search_precedents_dedup_latest_label(fresh_db):
+    with store.get_conn() as conn:
+        case_id = _seed_precedent(conn, comment="첫 라벨")
+        # 같은 case 에 최신 label + outcome 추가 → label×outcome 곱 대신 case 당 1행(최신 기준)
+        lbl2 = store.insert_label(case_id, None, "MINOR", "spec", None, 0, 0,
+                                  "최신 라벨", "seed", None, "seed", conn=conn)
+        store.insert_case_outcome(case_id, lbl2, "spec_release", None, "improved",
+                                  None, None, None, conn=conn)
+    res = store.search_precedents(18, "V", "vref_trim")
+    assert len(res) == 1
+    assert res[0]["human_comment"] == "최신 라벨"
+    assert res[0]["action"] == "spec_release"
 
 
 def test_search_precedents_value_type_filter(fresh_db):

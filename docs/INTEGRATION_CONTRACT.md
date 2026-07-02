@@ -25,9 +25,20 @@ def evaluate(run_input: dict, *, engine_version: str | None = None,
     """
 ```
 
-## 3. 입력 — run_input (plain dict, pandas/df_honey 의존 없음)
-report_server 가 df_honey 에서 아래 **중립 dict** 로 변환해 전달(eval_analyzer 는 내부에서
-자체 numpy/pandas 로 재구성. df_honey 객체를 직접 받지 않는다 — 결합 분리).
+## 3. 입력 — run_input
+**(정본) `raw_df` — honey_parse 정규화 df 를 그대로 전달.** 상세·필드사전은
+[REPORT_GENERATOR_DATA_REQUEST.md](REPORT_GENERATOR_DATA_REQUEST.md).
+```python
+run_input = {"meta": {...}, "raw_df": df}   # df = pandas.DataFrame (아래 레이아웃)
+# columns: SERIAL,SHOT,DUT,XPOS,YPOS,BIN,FAILTNO, TESTITEM1, TESTITEM2, ...
+# row0 TSEQ / row1 TNO / row2 UNIT / row3 HILIM(USL) / row4 LOLIM(LSL) / row5+ 측정
+# fail 식별 = FAILTNO(serial이 fail한 test의 TNO) == 그 item의 TNO → fail item, 그 serial BIN=fail bin
+# 사용: XPOS/YPOS/BIN/UNIT/HILIM/LOLIM/측정값/FAILTNO/TNO. 미사용: SERIAL/SHOT/DUT/TSEQ.
+```
+
+**(레거시) `raw_table` — 중립 dict.** 초기 계약. 여전히 지원(하위호환)하지만 신규 결합은 `raw_df` 사용.
+report_server 가 df 에서 아래 **중립 dict** 로 변환해 전달(eval_analyzer 는 내부에서
+자체 numpy 로 재구성).
 ```python
 run_input = {
   "meta": {
@@ -99,8 +110,9 @@ run_input = { "meta": {...},
 **report_server → eval_analyzer 에 줘야 할 것:**
 - 트리거(파일 run 시 evaluate 호출).
 - run_input.meta (product/product_type/family_product/pkg_type/lot/wafer/process/revision/inch/gross_die/fab_line/tester/para/edm_link/temperature/corner).
-- run_input.raw_table (per-DUT 측정 + limit + 좌표 + bin) — cpk/산포/공간 계산의 원재료.
-  ※ 현재 report_server 는 이걸 *버린다*(REPORT_SERVER_CONTEXT §5) → 결합 시 메모리로 넘겨주는 게 핵심.
+- run_input.raw_df (honey_parse 정규화 df: 측정 + HILIM/LOLIM + XPOS/YPOS + BIN + FAILTNO/TNO)
+  — cpk/산포/공간 계산의 원재료. ※ 현재 report_server 는 이걸 *버린다*(REPORT_SERVER_CONTEXT §5)
+  → 결합 시 메모리로 넘겨주는 게 핵심. (레거시 raw_table 도 지원)
 
 **eval_analyzer → report_server 에 주는 것:**
 - RunResult(§4) — status/signature/comment/confidence. report_server UI 가 표시(후속).

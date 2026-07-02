@@ -9,6 +9,9 @@
 - enum 은 `TEXT` + 애플리케이션 검증(별도 CHECK 안 검). vocabulary 는 본 문서 §10.
 - 쓰기는 단일 커넥션 컨텍스트매니저(자동 commit), `PRAGMA journal_mode=WAL`, `busy_timeout=5000`.
 - case_id 는 자연키 해시(§3). 재업로드 idempotent.
+- 스키마 버전은 `PRAGMA user_version`(현재 2). `store.init_db()` 가 버전을 읽어
+  `_MIGRATIONS`(from_version → fn) 를 순차 적용 후 `SCHEMA_VERSION` 으로 갱신.
+  스키마 변경 시 SCHEMA_VERSION +1 과 마이그레이션 단계 추가가 필수.
 
 ## 1. grain 요약 (row 1개의 의미)
 | 테이블 | row 1개 = |
@@ -84,6 +87,9 @@ CREATE TABLE IF NOT EXISTS bin_taxonomy (
     PRIMARY KEY (product_type, bin_number)
 );
 ```
+> bin_taxonomy 의 소스는 `rules/bin_taxonomy.yaml` — `store.init_db()` 가 entries 를
+> 이 테이블로 적재(idempotent)하고, 런타임 조회(L3 signatures)는 yaml 을 직접 읽는다
+> (preview 모드 DB 미접근 보장). 값 수정은 yaml 에서.
 
 ## 3. 코어 — 업로드 / case
 ```sql
@@ -174,7 +180,8 @@ CREATE TABLE IF NOT EXISTS evaluation (
     case_id          TEXT NOT NULL,
     run_id           INTEGER NOT NULL,
     engine_version   TEXT NOT NULL,
-    model_version    TEXT,                   -- LLM 모델 (코멘트 생성)
+    model_version    TEXT NOT NULL DEFAULT '',  -- LLM 모델 (코멘트 생성). ''=LLM 미사용.
+                                             -- NULL 금지: NULL 은 UNIQUE 를 우회(중복 insert)
     status           TEXT,                   -- CRITICAL|MAJOR|MINOR|MONITOR
     confidence       REAL,
     data_completeness TEXT,                  -- full|partial|low
@@ -270,9 +277,12 @@ LEFT JOIN evaluation ev ON ev.case_id = fc.case_id
 LEFT JOIN case_signature cs ON cs.eval_id = ev.eval_id AND cs.role='primary'
 LEFT JOIN label l ON l.case_id = fc.case_id
 LEFT JOIN case_outcome co ON co.case_id = fc.case_id
+     AND (co.label_id IS NULL OR co.label_id = l.label_id)  -- outcome 은 자기 label 과만 짝
 WHERE fc.bin = :bin AND im.value_type = :value_type
   AND (:family_product IS NULL OR pm.family_product = :family_product);
--- → 파이썬에서 item_canonical 유사도 ≥0.70 행만 채택
+-- → 파이썬 후처리: item_canonical 유사도 ≥0.70 행만 채택,
+--   case_id 당 1행(최신 label_id 대표행 — label×outcome 곱 제거),
+--   정렬 = (human_comment 있는 선례 우선, 유사도 내림차순). DB 파일 없으면 [].
 ```
 출력 → L5 recommend 에서 "retest→정상 / UVLO_TEST_EN H→정상 / spec release / 모과제 동일유형" 근거로 사용.
 

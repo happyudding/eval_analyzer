@@ -20,9 +20,9 @@ def _raw_run_input(n_pass=20, n_fail=4):
                      "Serial": f"S{dut}", "VREF_TRIM": 1.55 + 0.02 * i})
         dut += 1
     return {
-        "meta": {"product_name": "S5E_TEST_0000001", "family_product": "SOC PMIC",
-                 "product_type": "PMIC", "revision": "EVT0", "lot_id": "LOT001",
-                 "wafer_number": "W03"},
+        "meta": {"product_name": "S5E_TEST_0000001", "family_product": "SOC",
+                 "product_type": "PMIC", "revision": 0.0, "lot_id": "LOT001",
+                 "wafer_number": 3},
         "raw_table": {"meta_columns": ["DUT", "XCoord", "YCoord", "Bin", "Serial"],
                       "item_columns": ["VREF_TRIM"], "units": {"VREF_TRIM": "V"},
                       "lower_limit": {"VREF_TRIM": 1.0}, "upper_limit": {"VREF_TRIM": 1.4},
@@ -37,8 +37,8 @@ def _assert_case_shape(case):
 
 
 def test_degrade_gross_fail():
-    ri = {"meta": {"product_name": "P1", "product_type": "PMIC", "revision": "EVT0",
-                   "lot_id": "L1", "wafer_number": "W1", "family_product": "SOC PMIC"},
+    ri = {"meta": {"product_name": "P1", "product_type": "PMIC", "revision": 0.0,
+                   "lot_id": "L1", "wafer_number": 1, "family_product": "SOC"},
           "items": [{"item_name": "BUCK_SCAN", "bin": 40, "unit": "P_F",
                      "yield": 0.3, "fail_count": 196, "total_count": 280,
                      "lsl": None, "usl": None}]}
@@ -73,12 +73,12 @@ def test_raw_mode_attaches_precedent(fresh_db):
     # 선례 시드: 다른 product(cross-product), 같은 family/bin/value_type/유사 이름
     with store.get_conn() as conn:
         store.upsert_product_master(
-            {"product_name": "OLD_PROD", "family_product": "SOC PMIC",
+            {"product_name": "OLD_PROD", "family_product": "SOC",
              "product_type": "PMIC"}, conn=conn)
         item_id = store.upsert_item_master("vref_trim", "VREF_TRIM", None, None, "TRIM",
                                            None, "V", None, conn=conn)
-        old_case = store.make_case_id("OLD_PROD", "L0", "W0", item_id, 18, "EVT0")
-        store.upsert_fail_case(old_case, "OLD_PROD", "L0", "W0", item_id, 18, "EVT0",
+        old_case = store.make_case_id("OLD_PROD", "L0", 0, item_id, 18, 0.0)
+        store.upsert_fail_case(old_case, "OLD_PROD", "L0", 0, item_id, 18, 0.0,
                                "TRIM|V|18", conn=conn)
         lbl = store.insert_label(old_case, None, "MAJOR", "equipment", None, 0, 0,
                                  "golden unit 재측정", "seed", None, "seed", conn=conn)

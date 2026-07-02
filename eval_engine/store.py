@@ -8,7 +8,11 @@ import sqlite3
 import time
 from contextlib import contextmanager
 
+import yaml
+
 from . import config
+
+SCHEMA_VERSION = 2  # PRAGMA user_version. 스키마 변경 시 +1 하고 _MIGRATIONS 에 단계 추가.
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS product_master (
@@ -68,7 +72,8 @@ CREATE TABLE IF NOT EXISTS features (
 );
 CREATE TABLE IF NOT EXISTS evaluation (
     eval_id INTEGER PRIMARY KEY AUTOINCREMENT, case_id TEXT NOT NULL, run_id INTEGER NOT NULL,
-    engine_version TEXT NOT NULL, model_version TEXT, status TEXT, confidence REAL,
+    engine_version TEXT NOT NULL, model_version TEXT NOT NULL DEFAULT '',
+    status TEXT, confidence REAL,
     data_completeness TEXT, comment TEXT, created_at INTEGER NOT NULL,
     UNIQUE(case_id, run_id, engine_version, model_version)
 );
@@ -123,11 +128,61 @@ def get_conn():
         conn.close()
 
 
+def _migrate_v1_to_v2(conn):
+    """evaluation.model_version NULL 허용 → NOT NULL DEFAULT '' (NULL 은 '' 로 정규화).
+
+    SQLite 는 NOT NULL 로 ALTER 불가 → 테이블 재생성 후 복사. 이미 v2 형태면 no-op.
+    """
+    notnull = {r[1]: r[3] for r in conn.execute("PRAGMA table_info(evaluation)")}
+    if notnull.get("model_version"):
+        return
+    conn.executescript("""
+        ALTER TABLE evaluation RENAME TO evaluation_v1;
+        CREATE TABLE evaluation (
+            eval_id INTEGER PRIMARY KEY AUTOINCREMENT, case_id TEXT NOT NULL, run_id INTEGER NOT NULL,
+            engine_version TEXT NOT NULL, model_version TEXT NOT NULL DEFAULT '',
+            status TEXT, confidence REAL,
+            data_completeness TEXT, comment TEXT, created_at INTEGER NOT NULL,
+            UNIQUE(case_id, run_id, engine_version, model_version)
+        );
+        INSERT INTO evaluation (eval_id,case_id,run_id,engine_version,model_version,
+                                status,confidence,data_completeness,comment,created_at)
+            SELECT eval_id,case_id,run_id,engine_version,COALESCE(model_version,''),
+                   status,confidence,data_completeness,comment,created_at
+            FROM evaluation_v1;
+        DROP TABLE evaluation_v1;
+    """)
+
+
+_MIGRATIONS = {1: _migrate_v1_to_v2}  # {from_version: fn} — from → from+1
+
+
+def _migrate(conn):
+    ver = conn.execute("PRAGMA user_version").fetchone()[0]
+    for v in range(max(ver, 1), SCHEMA_VERSION):
+        _MIGRATIONS[v](conn)
+    conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
+
+
+def _seed_bin_taxonomy(conn):
+    """rules/bin_taxonomy.yaml entries → bin_taxonomy 테이블 적재(idempotent). 파일 없으면 skip."""
+    try:
+        with open(config.BIN_TAXONOMY_FILE, encoding="utf-8") as f:
+            doc = yaml.safe_load(f) or {}
+    except FileNotFoundError:
+        return
+    for e in doc.get("entries") or []:
+        upsert_bin_taxonomy(e.get("product_type"), e.get("bin_number"), e.get("bin_class"),
+                            e.get("severity_bias"), e.get("description"), conn=conn)
+
+
 def init_db():
-    """eval.db 생성 + 스키마. (config.DATA_DIR 자동 생성)"""
+    """eval.db 생성 + 스키마 + 마이그레이션 + bin_taxonomy 시드. (config.DATA_DIR 자동 생성)"""
     config.DATA_DIR.mkdir(parents=True, exist_ok=True)
     with get_conn() as conn:
         conn.executescript(SCHEMA)
+        _migrate(conn)
+        _seed_bin_taxonomy(conn)
 
 
 # ── CRUD (docs/DB_SCHEMA 기준) ───────────────────────────────────────────────
@@ -280,6 +335,7 @@ def save_features(case_id, run_id, engine_version, f: dict, conn=None) -> None:
 
 def save_evaluation(case_id, run_id, engine_version, model_version, status,
                     confidence, data_completeness, comment, conn=None) -> int:
+    model_version = model_version or ""  # NULL 은 UNIQUE 를 우회하므로 '' 로 정규화
     sql = """INSERT INTO evaluation
              (case_id,run_id,engine_version,model_version,status,confidence,
               data_completeness,comment,created_at)
@@ -292,7 +348,7 @@ def save_evaluation(case_id, run_id, engine_version, model_version, status,
                         confidence, data_completeness, comment, _now()))
         row = c.execute("""SELECT eval_id FROM evaluation
                            WHERE case_id=? AND run_id=? AND engine_version=?
-                             AND model_version IS ?""",
+                             AND model_version=?""",
                         (case_id, run_id, engine_version, model_version)).fetchone()
         return row["eval_id"]
 
@@ -358,9 +414,14 @@ def search_precedents(bin_, value_type, item_canonical, family_product=None,
 
     후보를 SQL 로 좁힌 뒤 difflib.SequenceMatcher.ratio 로 이름 유사도 후처리.
     exclude_case_id: 자기 자신(현재 평가 중인 case)은 선례에서 제외.
+    case 당 1행(최신 label 기준, label×outcome 곱 제거), 라벨 있는 선례 우선.
+    DB 파일이 없으면(preview 모드 등) 빈 목록 — 빈 파일 생성/크래시 방지.
     """
+    if conn is None and not config.DB_PATH.exists():
+        return []
     sql = """SELECT fc.case_id, im.item_canonical, fc.bin, im.value_type, fc.product_name,
-                    pm.family_product, cs.signature, l.root_cause_category, l.human_comment,
+                    pm.family_product, cs.signature, l.label_id,
+                    l.root_cause_category, l.human_comment,
                     co.action, co.condition, co.result
              FROM fail_case fc
              JOIN item_master im ON im.item_id = fc.item_id
@@ -369,18 +430,28 @@ def search_precedents(bin_, value_type, item_canonical, family_product=None,
              LEFT JOIN case_signature cs ON cs.eval_id = ev.eval_id AND cs.role='primary'
              LEFT JOIN label l ON l.case_id = fc.case_id
              LEFT JOIN case_outcome co ON co.case_id = fc.case_id
+                  AND (co.label_id IS NULL OR co.label_id = l.label_id)
              WHERE fc.bin = ? AND im.value_type = ?
                AND (? IS NULL OR pm.family_product = ?)"""
     with _scope(conn) as c:
         rows = [dict(r) for r in c.execute(
             sql, (bin_, value_type, family_product, family_product)).fetchall()]
-    out = []
+
+    def _rank(r):  # 같은 case 의 여러 (label×outcome) 행 중 대표행: 최신 label > 정보 많은 행
+        return ((r["label_id"] or 0), r["action"] is not None, r["result"] is not None)
+
+    best = {}
     for r in rows:
         if exclude_case_id is not None and r["case_id"] == exclude_case_id:
             continue
         sim = difflib.SequenceMatcher(None, item_canonical, r["item_canonical"] or "").ratio()
-        if sim >= config.PRECEDENT_NAME_SIMILARITY:
-            r["similarity"] = sim
-            out.append(r)
-    out.sort(key=lambda r: r["similarity"], reverse=True)
+        if sim < config.PRECEDENT_NAME_SIMILARITY:
+            continue
+        r["similarity"] = sim
+        prev = best.get(r["case_id"])
+        if prev is None or _rank(r) > _rank(prev):
+            best[r["case_id"]] = r
+    out = sorted(best.values(),
+                 key=lambda r: (r["human_comment"] is not None, r["similarity"]),
+                 reverse=True)
     return out[:limit]

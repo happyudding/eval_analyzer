@@ -31,3 +31,15 @@ def thresholds_for(case_ctx: dict) -> dict:
 
 def signatures_doc() -> dict:
     return load_yaml(str(config.SIGNATURES_FILE))
+
+
+def bin_taxonomy_for(product_type, bin_number):
+    """rules/bin_taxonomy.yaml entries 에서 (product_type, bin_number) 매칭 1건. 없으면 None."""
+    try:
+        doc = load_yaml(str(config.BIN_TAXONOMY_FILE))
+    except FileNotFoundError:
+        return None
+    for e in (doc or {}).get("entries") or []:
+        if e.get("product_type") == product_type and e.get("bin_number") == bin_number:
+            return e
+    return None

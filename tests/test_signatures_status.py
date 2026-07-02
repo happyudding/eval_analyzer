@@ -1,13 +1,8 @@
-"""L3 signatures + L4 status 단독 테스트."""
-import pytest
+"""L3 signatures + L4 status 단독 테스트.
 
+signatures.evaluate 는 DB 미접근(bin_taxonomy 는 rules yaml 조회) — DB fixture 불필요.
+"""
 from eval_engine.pipeline import signatures, status
-
-
-@pytest.fixture(autouse=True)
-def _isolated_db(fresh_db):
-    """signatures.evaluate 가 bin_taxonomy 조회 시 빈 tmp DB 사용(환경 독립)."""
-    return fresh_db
 
 
 def _case(**kw):

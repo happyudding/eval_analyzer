@@ -12,8 +12,7 @@
 """
 import re
 
-from .. import store
-from ._rules import thresholds_for, signatures_doc
+from ._rules import thresholds_for, signatures_doc, bin_taxonomy_for
 
 # 고차모멘트(표본 부족 시 비활성) 의존 metric
 _HIGH_MOMENT_METRICS = {"skewness", "kurtosis"}
@@ -74,9 +73,9 @@ def evaluate(case_ctx: dict, features: dict, raw_metrics: dict) -> dict:
                           "action_ko": sig.get("action_ko")})
             reason_codes.extend(e["signal_code"] for e in evidence)
 
-    bt = store.get_bin_taxonomy(case_ctx.get("product_type"), case_ctx.get("bin"))
-    bin_class = bt["bin_class"] if bt else None
-    severity_bias = bt["severity_bias"] if bt else 0.0
+    bt = bin_taxonomy_for(case_ctx.get("product_type"), case_ctx.get("bin"))
+    bin_class = bt.get("bin_class") if bt else None
+    severity_bias = bt.get("severity_bias") if bt else 0.0
 
     return {
         "signatures": fired, "reason_codes": reason_codes,

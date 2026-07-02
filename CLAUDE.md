@@ -46,5 +46,7 @@ data/               eval.db (런타임 생성, gitignore)
 7. `cli.py run/seed` 로 seeds/background_seed_example.csv + 샘플 raw 1개 E2E 검증.
 
 ## 검증
-`python -m eval_engine.cli init` → 16개 테이블 생성 확인. 이후 `... run <sample.csv>` 로 evaluate() E2E.
-현재는 store.init_db() 와 스키마만 동작(나머지 모듈은 NotImplementedError 스텁).
+`python -m eval_engine.cli init` → 16개 테이블 + bin_taxonomy 시드 + `PRAGMA user_version` 확인.
+이후 `... run <sample.csv>` 로 evaluate() E2E. `python -m pytest -q` 로 전체 테스트.
+현재 상태: L0~L6 파이프라인·store CRUD·선례검색(SQL) 구현 완료(테스트 통과).
+미구현: calibrate.recalibrate(분위수 보정), llm_client.complete(HTTP 호출), RAG 선례 백엔드(상대측).

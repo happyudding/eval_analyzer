@@ -45,8 +45,8 @@ def df_honey_to_run_input(honey, meta_override=None):
                  "item_columns": subjects, "units": units,
                  "lower_limit": lower, "upper_limit": upper, "rows": rows}
 
-    meta = {"product_name": "MASS_HUGE_TEST", "product_type": "PMIC", "revision": "EVT0",
-            "lot_id": "MASS_LOT", "wafer_number": "W01", "family_product": "SOC PMIC",
+    meta = {"product_name": "MASS_HUGE_TEST", "product_type": "PMIC", "revision": 0.0,
+            "lot_id": "MASS_LOT", "wafer_number": 1, "family_product": "SOC",
             "source_file": "mass_huge_W01.csv", "ingested_by": "integration_test"}
     if meta_override:
         meta.update(meta_override)

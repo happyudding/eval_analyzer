@@ -6,21 +6,22 @@
 
 ---
 
-## 1. raw 데이터 레이아웃 (df_honey 표준형) — 이걸 전제로 계산
-출처: `client/report_generator/df_honey.py`, `constants.py`.
+## 1. raw 데이터 레이아웃 (honey_parse 정규화 df) — 이걸 전제로 계산
+현행 계약([REPORT_GENERATOR_DATA_REQUEST.md], INTEGRATION_CONTRACT §3):
 ```
-DataFrame columns = [DUT, XCoord, YCoord, Bin, Serial, item1, item2, ...]
-  row 0 = Units            (UNITS_ROW = 0)
-  row 1 = Lower Limit      (LOWER_LIMIT_ROW = 1)
-  row 2 = Upper Limit      (UPPER_LIMIT_ROW = 2)
-  row 3~4 = limit 중복행
-  row 5~ = 측정 데이터      (DATA_START_ROW = 5)
-열 0~4 = meta (DUT/XCoord/YCoord/Bin/Serial), N_META_COLUMNS = 5
-열 5~ = subject(item) 측정값
-PASS_BIN = (보통 1)  # pass bin 번호
+DataFrame columns = [SERIAL, SHOT, DUT, XPOS, YPOS, BIN, FAILTNO, item1, item2, ...]
+  row 0 = TSEQ (미사용)
+  row 1 = TNO       (item별 test 번호 — fail 매핑 키)
+  row 2 = UNIT      (item별 단위 → value_type)
+  row 3 = HILIM     (item별 상한 = USL)
+  row 4 = LOLIM     (item별 하한 = LSL)
+  row 5~ = 측정 데이터 (DATA_START_ROW = 5)
+열 0~6 = meta (SERIAL/SHOT/DUT/XPOS/YPOS/BIN/FAILTNO), 열 7~ = item 측정값
 ```
-- eval_analyzer 의 run_input.raw_table 은 이 레이아웃을 dict 로 받은 것(INTEGRATION_CONTRACT §3).
-  내부에서 numpy/pandas 로 재구성: item별 측정 시리즈 + lsl/usl 확보.
+- eval_analyzer 는 이 df 를 컬럼 단위로 읽어 item별 측정 벡터 + lsl/usl(LOLIM/HILIM) 확보.
+  per-DUT(=serial) 행 레코드는 만들지 않는다. 구현: `pipeline/ingest.py:_ingest_raw_df`.
+- (레거시) 초기 df_honey 레이아웃 `[DUT,XCoord,YCoord,Bin,Serial,items...]` + 중립 dict raw_table 도
+  `_ingest_raw_table` 로 지원(하위호환). PASS_BIN = 보통 1.
 
 ## 2. cpk / cp / cpl / cpu (★ 정확 공식)
 출처: `_builders.py: get_df_cpk_summary(numeric_df, lo_arr, hi_arr)`.
@@ -73,15 +74,18 @@ def ecdf(values):
 ```
 - **다운샘플 금지**(report_server 규칙): 모든 포인트 사용. 동일값 구간만 step 으로 압축 허용.
 
-## 4. fail 판정 (lo/hi/break)
-출처: `df_honey.py: fail_mask_lo / fail_mask_hi / fail_mask_break / fail_mask`.
+## 4. fail item 판정 (FAILTNO / TNO — 현행 정본)
+현행 df 포맷은 테스터가 채운 **FAILTNO** 로 fail 을 식별한다(limit 위반 재판정 아님):
 ```
-fail_lo[d]    = value[d] < lower_limit
-fail_hi[d]    = value[d] > upper_limit
-fail_break[d] = 측정 중단(말미 연속 NaN 런의 시작) — PASS_BIN DUT 제외 (stop-on-fail 감지)
-fail[d]       = fail_lo | fail_hi | fail_break
+serial(측정행) 별 FAILTNO = 그 serial 이 fail 한 test 의 TNO (stop-on-fail, serial당 1개).
+fail item  = TNO행에서 FAILTNO 와 같은 TNO 를 가진 item 컬럼.
+fail bin   = 그 serial 의 BIN.
+fail case  = (fail item, bin)  — FAILTNO==item.TNO 인 serial 들의 BIN 별 집합.
+FAILTNO 공란/0/NaN = pass(무fail).
 ```
-- eval_analyzer 에서는 보통 bin != PASS_BIN 으로 fail DUT 를 잡거나, 위 limit 위반으로 판정.
+구현: `pipeline/ingest.py:_ingest_raw_df`.
+- (레거시 raw_table 경로) bin != PASS_BIN AND limit 위반(value < lo | value > hi)으로 fail 판정
+  (`_ingest_raw_table`).
 
 ## 5. eval_analyzer 신규 feature 공식 (report_server 에 없음 — 새로 구현)
 robust 통계 표준값 사용. 임계값은 하드코딩 금지(calibration 분위수).
