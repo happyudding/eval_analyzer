@@ -58,5 +58,35 @@ signatures:
     action_ko: "양쪽 spec 모두 근접 — 분포 폭이 spec 대비 과대, 공정/설계 재검토"
     evidence: ["spec_margin_low {spec_margin_low}", "spec_margin_high {spec_margin_high}"]
 
-# 보류(구현 시 추가): CODE_RAIL(code_edge_hit/limit_hit_ratio),
-#   TRIM_INEFFECTIVE/RETEST_RECOVERY(family)
+  - id: LOW_CPK
+    when_metric: { cpk: "<cpk_bad" }
+    status_hint: MAJOR
+    action_ko: "공정능력지수 부적합(cpk<1.0) — 산포/센터링 근본 점검"
+    evidence: ["cpk {cpk}"]
+
+  - id: MARGINAL_CPK
+    when_metric: { cpk: "<cpk_warn" }
+    status_hint: MONITOR
+    action_ko: "cpk 주의 구간(1.0~1.33) — 추세 관찰"
+    evidence: ["cpk {cpk}"]
+
+  - id: MEAN_SHIFT
+    when_metric: { center_bias: "abs>mean_shift_warn" }
+    status_hint: MINOR
+    action_ko: "분포 중심이 한쪽 spec 으로 치우침 — offset/센터링 trim 검토"
+    evidence: ["center_bias {center_bias}", "nearest {nearest_spec_side}"]
+
+  - id: CENTER_FAIL
+    when_metric: { center_fail_ratio: ">edge_fail_ratio_warn" }
+    status_hint: MAJOR
+    action_ko: "wafer 중심부 불량 집중 — center 공정(증착/CMP 등) 점검"
+    evidence: ["center_fail_ratio {center_fail_ratio}"]
+
+  - id: CLUSTER_FAIL
+    when_metric: { quadrant_imbalance: ">quadrant_imbalance_warn" }
+    status_hint: MAJOR
+    action_ko: "특정 사분면 불량 편중 — 국부 결함/handler/scratch 확인"
+    evidence: ["quadrant_imbalance {quadrant_imbalance}"]
+
+# 보류(구현 시 추가): CODE_RAIL(code_edge_hit/limit_hit_ratio), HEAVY_TAIL(kurtosis),
+#   gradient(radial/x/y — 좌표 스케일 정규화 선행), TRIM_INEFFECTIVE/RETEST_RECOVERY(family)

@@ -52,10 +52,13 @@ def evaluate(case_ctx: dict, features: dict, raw_metrics: dict) -> dict:
     th = thresholds_for(case_ctx)
     ctx_values = {**raw_metrics, **features}  # cpk/yield(raw) + spread_norm 등(features)
     # 방향무관 spec 근접도(파생값, DB 저장 안 함) — TAIL_RISK 양방향 커버용
-    _margins = [m for m in (features.get("spec_margin_low"), features.get("spec_margin_high"))
-                if m is not None]
+    _sml, _smh = features.get("spec_margin_low"), features.get("spec_margin_high")
+    _margins = [m for m in (_sml, _smh) if m is not None]
     if _margins:
         ctx_values["spec_margin_min"] = min(_margins)
+    # center_bias: 중심 이탈도([-1,1], 0=센터, 부호=치우친 방향) — MEAN_SHIFT용(양쪽 spec 필요)
+    if _sml is not None and _smh is not None and (_sml + _smh) > 0:
+        ctx_values["center_bias"] = (_smh - _sml) / (_sml + _smh)
 
     n_dut = features.get("n_dut") or 0
     high_moment_ok = n_dut >= th["n_min"]

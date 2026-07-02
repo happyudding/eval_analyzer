@@ -18,6 +18,7 @@ default:
   edge_region_pct: 0.8      # 반경 정규화 0~1 중 상위 20% = edge
   center_region_pct: 0.3    # 반경 정규화 하위 30% = center
   quadrant_imbalance_warn: 1.0
+  mean_shift_warn: 0.30     # center_bias 이탈도(무차원 0~1) — 중심 치우침 컷
   cpk_trump_yield_floor: 0.7  # trump: cpk<cpk_bad AND yield<이값 → CRITICAL 강제
 
 # 제품군별 override 예시 (필요 시 채움)
