@@ -16,7 +16,7 @@ signatures:
     evidence: ["outlier_ratio {outlier_ratio}"]
 
   - id: TAIL_RISK
-    when_metric: { skewness: "abs>skew_warn", spec_margin_low: "<spec_margin_warn" }
+    when_metric: { skewness: "abs>skew_warn", spec_margin_min: "<spec_margin_warn" }
     status_hint: MAJOR
     action_ko: "한쪽 꼬리가 spec 근접 — centering/방향성 trim 검토"
     evidence: ["skewness {skewness}", "nearest {nearest_spec_side}"]
@@ -46,5 +46,17 @@ signatures:
     action_ko: "불량률 매우 높음 — 설계/마스크 등 근본 원인 점검"
     evidence: ["yield {yield}"]
 
-# 보류(구현 시 추가): SUBPOP_GAP(cdf_gap/density_gap), CODE_RAIL(code_edge_hit/limit_hit_ratio),
-#   BIDIR_TAIL(tail 양방향), TRIM_INEFFECTIVE/RETEST_RECOVERY(family)
+  - id: SUBPOP_GAP
+    when_metric: { bimodality_score: ">bimodality_warn" }
+    status_hint: MAJOR
+    action_ko: "분포가 두 무리로 분리(이봉) — 로트/장비 혼입·조건 이원화 점검"
+    evidence: ["bimodality_score {bimodality_score}", "cdf_gap {cdf_gap}"]
+
+  - id: BIDIR_TAIL
+    when_metric: { spec_margin_low: "<spec_margin_warn", spec_margin_high: "<spec_margin_warn" }
+    status_hint: MAJOR
+    action_ko: "양쪽 spec 모두 근접 — 분포 폭이 spec 대비 과대, 공정/설계 재검토"
+    evidence: ["spec_margin_low {spec_margin_low}", "spec_margin_high {spec_margin_high}"]
+
+# 보류(구현 시 추가): CODE_RAIL(code_edge_hit/limit_hit_ratio),
+#   TRIM_INEFFECTIVE/RETEST_RECOVERY(family)

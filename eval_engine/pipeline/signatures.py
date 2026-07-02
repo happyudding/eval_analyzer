@@ -15,7 +15,7 @@ import re
 from ._rules import thresholds_for, signatures_doc, bin_taxonomy_for
 
 # 고차모멘트(표본 부족 시 비활성) 의존 metric
-_HIGH_MOMENT_METRICS = {"skewness", "kurtosis"}
+_HIGH_MOMENT_METRICS = {"skewness", "kurtosis", "bimodality_score"}
 
 
 def _eval_condition(op_str, actual_value, thresholds):
@@ -51,6 +51,11 @@ def _format_evidence(template, ctx_values):
 def evaluate(case_ctx: dict, features: dict, raw_metrics: dict) -> dict:
     th = thresholds_for(case_ctx)
     ctx_values = {**raw_metrics, **features}  # cpk/yield(raw) + spread_norm 등(features)
+    # 방향무관 spec 근접도(파생값, DB 저장 안 함) — TAIL_RISK 양방향 커버용
+    _margins = [m for m in (features.get("spec_margin_low"), features.get("spec_margin_high"))
+                if m is not None]
+    if _margins:
+        ctx_values["spec_margin_min"] = min(_margins)
 
     n_dut = features.get("n_dut") or 0
     high_moment_ok = n_dut >= th["n_min"]
