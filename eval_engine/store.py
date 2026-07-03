@@ -12,7 +12,7 @@ import yaml
 
 from . import config
 
-SCHEMA_VERSION = 2  # PRAGMA user_version. 스키마 변경 시 +1 하고 _MIGRATIONS 에 단계 추가.
+SCHEMA_VERSION = 3  # PRAGMA user_version. 스키마 변경 시 +1 하고 _MIGRATIONS 에 단계 추가.
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS product_master (
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS bin_taxonomy (
 );
 CREATE TABLE IF NOT EXISTS ingest_run (
     run_id INTEGER PRIMARY KEY AUTOINCREMENT, product_name TEXT, lot_id TEXT,
-    wafer_number INTEGER, source_file TEXT, analysis_key TEXT, edm_link TEXT,
+    wafer_number INTEGER, source_file TEXT, analysis_key TEXT, session_id TEXT, edm_link TEXT,
     temperature INTEGER, corner TEXT, ingested_by TEXT, created_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS run_case (
@@ -154,7 +154,15 @@ def _migrate_v1_to_v2(conn):
     """)
 
 
-_MIGRATIONS = {1: _migrate_v1_to_v2}  # {from_version: fn} — from → from+1
+def _migrate_v2_to_v3(conn):
+    """ingest_run.session_id 추가 (report_server report_session.session_id 역참조용,
+    analysis_key(컨텐츠 해시)와 별개 — 업로드/실행 이벤트마다 새로 생성되는 ID)."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(ingest_run)")}
+    if "session_id" not in cols:
+        conn.execute("ALTER TABLE ingest_run ADD COLUMN session_id TEXT")
+
+
+_MIGRATIONS = {1: _migrate_v1_to_v2, 2: _migrate_v2_to_v3}  # {from_version: fn} — from → from+1
 
 
 def _migrate(conn):
@@ -275,14 +283,14 @@ def get_bin_taxonomy(product_type, bin_number, conn=None):
 
 def create_ingest_run(meta, conn=None) -> int:
     sql = """INSERT INTO ingest_run
-             (product_name,lot_id,wafer_number,source_file,analysis_key,edm_link,
+             (product_name,lot_id,wafer_number,source_file,analysis_key,session_id,edm_link,
               temperature,corner,ingested_by,created_at)
-             VALUES (?,?,?,?,?,?,?,?,?,?)"""
+             VALUES (?,?,?,?,?,?,?,?,?,?,?)"""
     with _scope(conn) as c:
         cur = c.execute(sql, (meta.get("product_name"), meta.get("lot_id"),
                               meta.get("wafer_number"), meta.get("source_file"),
-                              meta.get("analysis_key"), meta.get("edm_link"),
-                              meta.get("temperature"), meta.get("corner"),
+                              meta.get("analysis_key"), meta.get("session_id"),
+                              meta.get("edm_link"), meta.get("temperature"), meta.get("corner"),
                               meta.get("ingested_by"), _now()))
         return cur.lastrowid
 

@@ -9,7 +9,7 @@
 - enum 은 `TEXT` + 애플리케이션 검증(별도 CHECK 안 검). vocabulary 는 본 문서 §10.
 - 쓰기는 단일 커넥션 컨텍스트매니저(자동 commit), `PRAGMA journal_mode=WAL`, `busy_timeout=5000`.
 - case_id 는 자연키 해시(§3). 재업로드 idempotent.
-- 스키마 버전은 `PRAGMA user_version`(현재 2). `store.init_db()` 가 버전을 읽어
+- 스키마 버전은 `PRAGMA user_version`(현재 3). `store.init_db()` 가 버전을 읽어
   `_MIGRATIONS`(from_version → fn) 를 순차 적용 후 `SCHEMA_VERSION` 으로 갱신.
   스키마 변경 시 SCHEMA_VERSION +1 과 마이그레이션 단계 추가가 필수.
 
@@ -99,7 +99,8 @@ CREATE TABLE IF NOT EXISTS ingest_run (
     lot_id         TEXT,
     wafer_number   INTEGER,                  -- WAFER
     source_file    TEXT,
-    analysis_key   TEXT,                     -- report.db 역참조(있으면)
+    analysis_key   TEXT,                     -- report.db report_session.analysis_key 역참조(컨텐츠 해시, 있으면)
+    session_id     TEXT,                     -- report.db report_session.session_id 역참조(업로드/실행 이벤트 ID, 있으면)
     edm_link       TEXT,                     -- EDM Link
     temperature    INTEGER,                  -- [req0] 세션 입력 (우선 입력만, 분석 미사용)
     corner         TEXT,                     -- [req0] NN / SS / FF ...

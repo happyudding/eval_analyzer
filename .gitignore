@@ -3,4 +3,7 @@ __pycache__/
 data/*.db
 data/*.db-wal
 data/*.db-shm
+db_input/output/*.db
+db_input/output/*.db-wal
+db_input/output/*.db-shm
 .claude/settings.local.json

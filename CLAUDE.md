@@ -11,6 +11,22 @@
 > 그 외: [docs/REPORT_SERVER_CONTEXT.md](docs/REPORT_SERVER_CONTEXT.md)(데이터 출처),
 > [docs/HANDOFF_TO_REPORT_SERVER.md](docs/HANDOFF_TO_REPORT_SERVER.md)(상대측 작업).
 
+## 블록 지도 (오케스트레이션)
+각 블록 디렉터리에 작업용 `CLAUDE.md`(무엇을 어디서 만지나)를 둔다. 그 블록에서 작업하는 세션은
+해당 파일 하나만 먼저 읽으면 된다(Claude Code 가 하위 CLAUDE.md 를 자동 로드). 설계 정본은 항상 `docs/`.
+
+| 블록 | 진입 문서 | 역할 |
+|---|---|---|
+| 엔진 패키지 | [eval_engine/CLAUDE.md](eval_engine/CLAUDE.md) | `evaluate()` + config/store/cli/어댑터. 파일 지도·미구현 목록. |
+| 판단 파이프라인 | [eval_engine/pipeline/CLAUDE.md](eval_engine/pipeline/CLAUDE.md) | L0~L6 단계별 함수·raw_df 파싱·결측 규칙·status 판정. |
+| 룰/임계값 | [eval_engine/rules/CLAUDE.md](eval_engine/rules/CLAUDE.md) | thresholds/signatures/taxonomy yaml 스키마·스코프. |
+| 선례 적재기 | [db_input/CLAUDE.md](db_input/CLAUDE.md) | 과거 사례 CSV → 제품군별 선례 DB. |
+| 도구/testbench | [tools/CLAUDE.md](tools/CLAUDE.md) | 샘플 생성·콘솔 testbench(+ ⚠ 레이아웃 드리프트). |
+| 테스트 | [tests/CLAUDE.md](tests/CLAUDE.md) | 스위트 지도·DB 격리 규칙. |
+
+- `docs/` — 설계·계약·핸드오프 정본(위 세션 시작 규칙). `seeds/`·`samples/` — 예시 데이터.
+- `../plotly_sqlite/` — **별도 대시보드 앱**(독립 프로젝트, 자체 requirements). 엔진과 결합 아님, 참고만.
+
 ## 불변 규칙 (반드시 준수)
 1. **report_server 코드를 import 하지 않는다.** 필요한 계산은 직접 구현하거나 함수만 복사(vendor).
    알고리즘은 docs/CODE_TO_PORT.md 에 공식으로 있음. 의존 방향은 report_server → eval_analyzer 한 방향만.
