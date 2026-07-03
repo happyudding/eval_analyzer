@@ -51,3 +51,28 @@ def df_honey_to_run_input(honey, meta_override=None):
     if meta_override:
         meta.update(meta_override)
     return {"meta": meta, "raw_table": raw_table}
+
+
+def sample_csv_to_run_input(path, meta_override=None):
+    """정본 raw_df 레이아웃 CSV → run_input(raw_df). report_server 인계용 레퍼런스.
+
+    report_server 는 honey_parse 정규화 df 를 아래 레이아웃 그대로 in-memory 로 넘긴다
+    (INTEGRATION_CONTRACT §3). 이 함수는 그 df 를 CSV 에서 재구성하는 어댑터로,
+    dtype 계약을 명시한다: 데이터행 item 셀은 **실제 숫자 객체**여야 하고
+    (ingest._is_num 이 문자열을 거부), 메타행(TNO/UNIT/HILIM/LOLIM)·좌표·BIN·FAILTNO 는
+    문자열이어도 파서가 변환한다. eval_engine 은 import 하지 않는다.
+
+    레이아웃: columns SERIAL,SHOT,DUT,XPOS,YPOS,BIN,FAILTNO,<item...>
+      iloc row0 TSEQ / row1 TNO / row2 STEP / row3 UNIT / row4 HILIM / row5 LOLIM / row6+ 측정.
+    """
+    import pandas as pd
+    df = pd.read_csv(path, header=0, dtype=str).astype(object)
+    for col in list(df.columns[7:]):            # item 컬럼의 데이터행만 숫자화(메타행 0..5 은 유지)
+        df.loc[6:, col] = pd.to_numeric(df.loc[6:, col], errors="coerce")
+
+    meta = {"product_name": "S5E_SAMPLE_0000001", "product_type": "PMIC",
+            "family_product": "SOC", "revision": 0.0, "lot_id": "LOT_SAMPLE",
+            "wafer_number": 1, "source_file": str(path), "ingested_by": "integration_test"}
+    if meta_override:
+        meta.update(meta_override)
+    return {"meta": meta, "raw_df": df}

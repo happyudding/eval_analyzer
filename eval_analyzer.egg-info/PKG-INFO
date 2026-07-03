@@ -1,0 +1,10 @@
+Metadata-Version: 2.4
+Name: eval-analyzer
+Version: 0.0.1
+Summary: 반도체 fail-item 평가 분석 엔진 (report_server 와 독립, in-process 라이브러리)
+Requires-Python: >=3.10
+Requires-Dist: numpy
+Requires-Dist: pandas
+Requires-Dist: pyyaml
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"

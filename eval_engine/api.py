@@ -3,8 +3,14 @@
 계약: docs/INTEGRATION_CONTRACT.md (입력 run_input, 출력 RunResult).
 report_server 가 파일 1회 run 시 이 함수를 호출한다. eval_analyzer 는 report_server 를 import 안 함.
 """
+import logging
+import time
+
 from . import config, store
 from .pipeline import ingest, metrics, features, signatures, status, recommend, present
+
+# 라이브러리 로거 — 핸들러/레벨 설정은 host(report_server)에 맡긴다(핸들러 부착 금지).
+logger = logging.getLogger(__name__)
 
 
 def evaluate(run_input: dict, *, engine_version: str | None = None,
@@ -21,6 +27,11 @@ def evaluate(run_input: dict, *, engine_version: str | None = None,
       L6 present  결과 dict (+ persist 시 eval.db 적재)
     """
     engine_version = engine_version or config.ENGINE_VERSION
+    t0 = time.perf_counter()
+    meta = run_input.get("meta", {})
+    logger.info("evaluate 시작 product=%s lot=%s wafer=%s persist=%s engine=%s",
+                meta.get("product_name"), meta.get("lot_id"), meta.get("wafer_number"),
+                persist, engine_version)
     if persist:
         store.init_db()
 
@@ -28,18 +39,23 @@ def evaluate(run_input: dict, *, engine_version: str | None = None,
     run_ctx = ingest.ingest(run_input, persist=persist)   # → {run_id, cases:[case_ctx...]}
 
     results = []
+    n_precedent_hits = 0
     for case in run_ctx["cases"]:
         m = metrics.compute(case)                          # L1 raw_metrics
         f = features.compute(case, m, engine_version)      # L2 features
         sig = signatures.evaluate(case, f, m)              # L3 발화 signature 들
         verdict = status.decide(case, f, sig)              # L4 status/confidence
         preced = recommend.find_precedents(case, sig)      # 선례 검색 (DB_SCHEMA §9)
+        n_precedent_hits += len(preced)
         comment = recommend.make_comment(case, verdict, sig, preced,
                                          model_version=model_version)  # L5
         if persist:
             present.persist(run_ctx, case, m, f, verdict, sig, comment, engine_version, model_version)
         results.append(present.to_result(case, verdict, sig, comment, preced))
 
+    logger.info("evaluate 완료 run_id=%s cases=%d precedent_hits=%d %.1fms",
+                run_ctx.get("run_id"), len(results), n_precedent_hits,
+                (time.perf_counter() - t0) * 1000)
     return {
         "run_id": run_ctx.get("run_id"),
         "engine_version": engine_version,

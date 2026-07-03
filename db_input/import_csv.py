@@ -1,7 +1,9 @@
 """CSV -> eval.db(<product_type>_<family_product>.db) 수동 선례(precedent) 적재.
 
 사용법:
-  python db_input/import_csv.py <csv_path>
+  python db_input/import_csv.py <csv_path>                # 제품군별 output/<pt>_<fp>.db 로 분리 적재
+  python db_input/import_csv.py <csv_path> --to-eval-db   # 운영 eval.db(config.DB_PATH) 하나로 통합 적재
+                                                          # → evaluate() 의 search_precedents 가 바로 참조
 
 CSV 컬럼(template_example.csv 참고):
   product_name, product_type, family_product, lot_id, wafer_number, revision,
@@ -93,12 +95,11 @@ def _get_or_create_run(conn, csv_path, session_id):
          "ingested_by": "db_input"}, conn=conn)
 
 
-def _import_group(product_type, family_product, session_id, rows, csv_path):
+def _import_group(product_type, family_product, session_id, rows, csv_path, db_path):
     _validate_product_meta({"product_type": product_type, "family_product": family_product})
 
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    db_path = OUTPUT_DIR / f"{product_type}_{family_product}.db"
-    config.DATA_DIR = OUTPUT_DIR
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    config.DATA_DIR = db_path.parent
     config.DB_PATH = db_path
     store.init_db()
 
@@ -161,11 +162,17 @@ def _import_group(product_type, family_product, session_id, rows, csv_path):
 
 def main(argv=None):
     argv = argv if argv is not None else sys.argv[1:]
+    unified = "--to-eval-db" in argv
+    argv = [a for a in argv if a != "--to-eval-db"]
     if not argv:
         print(__doc__)
         return
     csv_path = argv[0]
     rows = _read_rows(csv_path)
+
+    # unified 모드: 모든 그룹을 운영 eval.db(config.DB_PATH, EVAL_DB_PATH env 존중) 하나로 적재
+    # → search_precedents 가 바로 참조. 기본(비-unified): 제품군별 output/<pt>_<fp>.db 분리.
+    eval_db = Path(config.DB_PATH)   # override 전에 캡처
 
     groups = {}
     for r in rows:
@@ -174,7 +181,9 @@ def main(argv=None):
         groups.setdefault(key, []).append(r)
 
     for (product_type, family_product, session_id), group_rows in groups.items():
-        db_path, n = _import_group(product_type, family_product, session_id, group_rows, csv_path)
+        db_path = eval_db if unified else OUTPUT_DIR / f"{product_type}_{family_product}.db"
+        db_path, n = _import_group(product_type, family_product, session_id, group_rows,
+                                   csv_path, db_path)
         print(f"[{product_type}_{family_product}] {n}건 적재 -> {db_path}"
               + (f" (session_id={session_id})" if session_id else ""))
 

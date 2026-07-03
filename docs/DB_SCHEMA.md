@@ -259,12 +259,12 @@ CREATE TABLE IF NOT EXISTS engine_version_registry (
 > 버전 *내용*은 rules/ 의 yaml 파일로 보관(DB 엔 경로+해시만). 같은 engine_version 으로
 > 재현 시 해당 yaml 을 읽는다. JSON blob 을 DB 에 넣지 않는다.
 
-## 9. 선례(precedent) 검색 — [req1] (bin + unit + item명 퍼지≥70%)
+## 9. 선례(precedent) 검색 — [req1] (unit + item명 퍼지≥70%)
 저장 테이블은 안 만들고(보류: materialize), **검색 함수**로 구현. 키:
-- 동일 `bin`
 - 동일 `value_type`(=unit계열)
 - `item_canonical` 알파벳 유사도 ≥ 0.70 (예: `difflib.SequenceMatcher(None,a,b).ratio()` 또는 Levenshtein ratio)
 - (보조 필터) `family_product`, `signature`
+- **`bin` 은 매칭 조건에서 제외**(더 폭넓게 참고 — 커밋 4166cb1). fail bin 이 달라도 같은 item/unit 이면 선례로 본다.
 
 검색 SQL 골격(파이썬에서 유사도 후처리):
 ```sql
@@ -279,8 +279,8 @@ LEFT JOIN case_signature cs ON cs.eval_id = ev.eval_id AND cs.role='primary'
 LEFT JOIN label l ON l.case_id = fc.case_id
 LEFT JOIN case_outcome co ON co.case_id = fc.case_id
      AND (co.label_id IS NULL OR co.label_id = l.label_id)  -- outcome 은 자기 label 과만 짝
-WHERE fc.bin = :bin AND im.value_type = :value_type
-  AND (:family_product IS NULL OR pm.family_product = :family_product);
+WHERE im.value_type = :value_type
+  AND (:family_product IS NULL OR pm.family_product = :family_product);   -- bin 조건 없음
 -- → 파이썬 후처리: item_canonical 유사도 ≥0.70 행만 채택,
 --   case_id 당 1행(최신 label_id 대표행 — label×outcome 곱 제거),
 --   정렬 = (human_comment 있는 선례 우선, 유사도 내림차순). DB 파일 없으면 [].
