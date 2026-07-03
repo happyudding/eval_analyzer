@@ -4,7 +4,7 @@
 할 일:
   1. product_master / item_master / item_spec upsert (마스터).
   2. item 명 파싱: item_canonical(정규화) / item_base / item_phase, item_alias 해소.
-  3. category_major(TRIM 포함 여부) / value_type(units→V|A|Hz|CODE|TCODE|P_F) 분류.
+  3. category_major(TRIM 포함 여부) / value_type(units→V|A|Hz|CODE|P_F|Ohm|Sec) 분류.
   4. fail item 추출: bin != PASS_BIN 또는 limit 위반(CODE_TO_PORT §4)인 (item, bin) 조합.
   5. case_id = store.make_case_id(...), item_class = f"{category_major}|{value_type}|{bin}".
   6. ingest_run 생성(run_id, meta 의 temperature/corner 포함), run_case 링크, fail_case upsert.
@@ -28,7 +28,9 @@ UNIT_TO_VALUE_TYPE = {
     "v": "V", "volt": "V", "volts": "V",
     "a": "A", "amp": "A", "amps": "A", "ma": "A", "ua": "A",
     "hz": "Hz", "khz": "Hz", "mhz": "Hz",
-    "code": "CODE", "tcode": "TCODE",
+    "code": "CODE",
+    "ohm": "Ohm", "ohms": "Ohm",
+    "s": "Sec", "sec": "Sec", "secs": "Sec", "ms": "Sec", "us": "Sec", "ns": "Sec",
     "p_f": "P_F", "pass/fail": "P_F", "p/f": "P_F", "": "P_F",
 }
 PHASE_TOKENS = {"init", "code", "trim", "p2", "p1", "final"}
@@ -71,7 +73,7 @@ def _classify_value_type(unit, item_name) -> str:
         if vt:
             return vt
     if "CODE" in item_name.upper():
-        return "TCODE" if "TRIM" in item_name.upper() else "CODE"
+        return "CODE"
     return "P_F"
 
 
@@ -207,16 +209,17 @@ def _ingest_raw_df(meta, df, persist, conn, alias):
     """신규 raw df 포맷(REPORT_GENERATOR_DATA_REQUEST) → fail_case 들. 컬럼 단위 처리.
 
     레이아웃: columns[:7]=meta(SERIAL,SHOT,DUT,XPOS,YPOS,BIN,FAILTNO), [7:]=item.
-      row0=TSEQ(미사용) row1=TNO row2=UNIT row3=HILIM(USL) row4=LOLIM(LSL) row5+=측정.
+      row0=TSEQ(미사용) row1=TNO row2=STEP(P1/P2/P3, 미사용) row3=UNIT row4=HILIM(USL)
+      row5=LOLIM(LSL) row6+=측정.
     fail 식별: FAILTNO(serial이 fail한 test의 TNO) == 그 item의 TNO → fail item, 그 serial BIN=fail bin.
     per-DUT dict 미생성 — 컬럼을 병렬 배열로 직접 읽는다.
     """
     revision = meta.get("revision")
     cols = list(df.columns)
     item_cols = cols[7:]
-    tno_row, unit_row = df.iloc[1], df.iloc[2]
-    hilim_row, lolim_row = df.iloc[3], df.iloc[4]
-    data = df.iloc[5:]
+    tno_row, unit_row = df.iloc[1], df.iloc[3]   # row2=STEP(미사용) skip
+    hilim_row, lolim_row = df.iloc[4], df.iloc[5]
+    data = df.iloc[6:]
 
     x_all = [_num_or_none(v) for v in data["XPOS"]]
     y_all = [_num_or_none(v) for v in data["YPOS"]]

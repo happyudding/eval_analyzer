@@ -34,8 +34,8 @@
 def _rag_search(case_ctx: dict, sig_result: dict) -> list: ...
 ```
 - `case_ctx`:
-  - `bin` (int) — 동일/유사 bin 선례 우선
-  - `value_type` (str) — 측정값 종류(V/A/...)
+  - `bin` (int) — 참고용(더 이상 필수 매칭 조건 아님)
+  - `value_type` (str) — 측정값 종류(V/A/...) — 필수 매칭 조건
   - `item_canonical` (str) — **쿼리 핵심**(item 정규화 이름)
   - `family_product` (str | None) — 제품군 스코프(있으면 우선)
   - `case_id` (str) — **자기 자신은 선례에서 제외**할 것
@@ -51,7 +51,9 @@ def _rag_search(case_ctx: dict, sig_result: dict) -> list: ...
 | `result` | 결과 | `recovered_normal` / `confirmed_defective` / `improved` / `pending` |
 | `human_comment` | 엔지니어 코멘트 원문 | `"site 편차로 재측정"` |
 
-- **`precedents[0]` 이 코멘트 템플릿·LLM 프롬프트의 최상위 선례**로 쓰인다 → 정렬 순서가 의미 있다.
+- **반환된 precedents 전부의 `human_comment` 가 코멘트 템플릿·LLM 프롬프트에 쓰인다**(action/result
+  는 더 이상 코멘트 생성 판단에 쓰이지 않고 benchtest 표시용 참고 metadata) → 정렬 순서는
+  표시 우선순위용.
 - 위 3개 외 key(similarity 등)는 넣어도 무시되니 자유. 빠지면 안 되는 건 위 3개뿐.
 
 ## 5. 인덱싱 대상 가이드 (권장)
@@ -59,12 +61,14 @@ def _rag_search(case_ctx: dict, sig_result: dict) -> list: ...
 - **본문(임베딩 대상)**: `item_master.item_canonical` (+ `value_type`, `bin` 컨텍스트), `fail_case`
 - **메타(반환 payload 구성)**: `label.human_comment` → `human_comment`,
   `case_outcome.action / result` → `action / result`, `case_signature(role='primary').signature`
-- 스코프: 동일 `bin` + 동일 `value_type` + (있으면) 동일 `family_product`, `case_id != 현재`.
+- 스코프: 동일 `value_type` + (있으면) 동일 `family_product`, item 유사도 ≥0.70,
+  `case_id != 현재`. `bin` 은 매칭 조건 아님.
 - 상세 grain·조인은 [DB_SCHEMA.md](DB_SCHEMA.md) §9 참조.
 
 ## 6. 참고 구현 (동형 SQL)
 `eval_engine/store.py` 의 `search_precedents()` 가 동일 계약의 SQL 버전:
-- `bin` + `value_type` 로 후보 좁힘 → item 이름 퍼지유사도 `≥ EVAL_PRECEDENT_SIM`(기본 0.70) 후처리 → 유사도순 top-k.
+- `value_type`(+ `family_product`) 로 후보 좁힘 → item 이름 퍼지유사도
+  `≥ EVAL_PRECEDENT_SIM`(기본 0.70) 후처리 → 유사도순 전체 반환.
 - RAG 는 이 "관련 선례 top-k" 를 **임베딩 유사도**로 대체하는 것뿐. 반환 dict 모양은 동일하게 맞춰라.
 
 ## 7. 검증 체크리스트

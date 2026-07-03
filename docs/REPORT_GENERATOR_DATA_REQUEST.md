@@ -23,13 +23,14 @@ columns: SERIAL, SHOT, DUT, XPOS, YPOS, BIN, FAILTNO, TESTITEM1, TESTITEM2, ...
          └─────────── meta 7개 (컬럼 0~6) ──────────┘ └──────── item 컬럼 (7~) ────────┘
 row 0 : TSEQ    (test sequence)
 row 1 : TNO     (item별 test 번호)
-row 2 : UNIT    (item별 단위)
-row 3 : HILIM   (item별 상한)
-row 4 : LOLIM   (item별 하한)
-row 5+: serial(=DUT) 별 측정 데이터
+row 2 : STEP    (P1/P2/P3 — test step)
+row 3 : UNIT    (item별 단위)
+row 4 : HILIM   (item별 상한)
+row 5 : LOLIM   (item별 하한)
+row 6+: serial(=DUT) 별 측정 데이터
 ```
 - **컬럼 순서 고정**: 앞 7개가 meta, 8번째부터 test item. item 개수는 가변.
-- **메타행 5개 위치 고정**: row0~4 = TSEQ/TNO/UNIT/HILIM/LOLIM. row5 부터 실제 측정.
+- **메타행 6개 위치 고정**: row0~5 = TSEQ/TNO/STEP/UNIT/HILIM/LOLIM. row6 부터 실제 측정.
 - item 컬럼의 메타행 셀에 그 item 의 TNO/단위/상한/하한이 들어간다.
 
 ### eval_analyzer 가 실제로 쓰는 것 / 안 쓰는 것
@@ -39,11 +40,11 @@ row 5+: serial(=DUT) 별 측정 데이터
 | BIN | **사용** | fail bin 식별·분류 |
 | FAILTNO | **사용** | fail item 식별(아래 §2) |
 | TNO (row1) | **사용** | FAILTNO 매핑 키 |
-| UNIT (row2) | **사용** | value_type(V/A/Hz/CODE/TCODE/P_F) 매핑 |
-| HILIM (row3) | **사용** | 상한 = USL |
-| LOLIM (row4) | **사용** | 하한 = LSL |
-| TESTITEM 측정값 (row5+) | **사용** | cpk/bimodality/산포/outlier 계산 |
-| SERIAL / SHOT / DUT / TSEQ | 미사용 | (존재해도 무방, 읽지 않음) |
+| UNIT (row3) | **사용** | value_type(V/A/Hz/CODE/P_F/Ohm/Sec) 매핑 |
+| HILIM (row4) | **사용** | 상한 = USL |
+| LOLIM (row5) | **사용** | 하한 = LSL |
+| TESTITEM 측정값 (row6+) | **사용** | cpk/bimodality/산포/outlier 계산 |
+| SERIAL / SHOT / DUT / TSEQ (row0) / STEP (row2) | 미사용 | (존재해도 무방, 읽지 않음) |
 
 ## 2. fail item 식별 규칙 (★ FAILTNO/TNO 를 정확히 채워야 함)
 - 각 측정행(serial)의 **FAILTNO** = 그 serial 이 **fail 한 test 의 TNO** (stop-on-fail, serial당 1개).
@@ -83,7 +84,8 @@ evaluate({"meta": {...}, "items": [
   (허용값과 정확히 일치, 불일치 시 `evaluate()` 예외). rules/product_taxonomy.yaml 기준.
 - **HILIM=USL(상한), LOLIM=LSL(하한)**. 한쪽만 있으면 그쪽만 채우고 반대는 공란(NaN).
 - **FAILTNO 공란/0 = pass** 규칙을 지켜라(다른 규칙이면 알려달라).
-- **컬럼 순서·메타행 위치 고정**(앞 7 meta, row0~4 메타행). 바꾸면 eval_analyzer 파서가 깨진다.
+- **컬럼 순서·메타행 위치 고정**(앞 7 meta, row0~5 메타행 TSEQ/TNO/STEP/UNIT/HILIM/LOLIM).
+  바꾸면 eval_analyzer 파서가 깨진다.
 - **다운샘플 금지** — 모든 serial 측정값을 그대로(산포/분포 정확도).
 - 이 레이아웃엔 **Site 컬럼이 없어** site간 편차 지표(site_cpk_delta)는 비활성. 필요하면 협의.
 - report_generator 는 **계산값이 아니라 df(raw)만** 넘긴다. 계산·저장은 eval_analyzer 책임.

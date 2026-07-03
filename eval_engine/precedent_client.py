@@ -19,9 +19,9 @@ def search(case_ctx: dict, sig_result: dict) -> list:
 
 
 def _sql_search(case_ctx: dict, sig_result: dict) -> list:
-    """기존 SQL 선례검색(동작 100% 보존). DB_SCHEMA §9."""
+    """기존 SQL 선례검색. DB_SCHEMA §9. bin 은 매칭 조건에서 제외."""
     return store.search_precedents(
-        case_ctx["bin"], case_ctx["value_type"], case_ctx["item_canonical"],
+        case_ctx["value_type"], case_ctx["item_canonical"],
         family_product=case_ctx.get("family_product"),
         exclude_case_id=case_ctx.get("case_id"))
 

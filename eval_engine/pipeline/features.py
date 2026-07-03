@@ -210,7 +210,7 @@ def compute(case_ctx: dict, raw_metrics: dict, engine_version: str) -> dict:
 
     spatial = _spatial_features(case_ctx, th)
     site_cpk_delta = _site_cpk_delta(case_ctx)
-    code_edge_hit = limit_hit_ratio if case_ctx.get("value_type") in ("CODE", "TCODE") else None
+    code_edge_hit = limit_hit_ratio if case_ctx.get("value_type") == "CODE" else None
 
     return {
         "spread_norm": spread_norm, "skewness": skewness, "kurtosis": kurtosis,

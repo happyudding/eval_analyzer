@@ -27,6 +27,12 @@ def persist(run_ctx, case_ctx, raw_metrics, features, verdict, sig_result, comme
 
 
 def to_result(case_ctx, verdict, sig_result, comment, precedents) -> dict:
+    primary_id = verdict["primary_signature"]
+    sig_breakdown = [
+        {"id": s["id"], "role": "primary" if s["id"] == primary_id else "secondary",
+         "evidence": s.get("evidence", []), "action_ko": s.get("action_ko")}
+        for s in sig_result.get("signatures", [])
+    ]
     return {
         "case_id": case_ctx["case_id"],
         "item_canonical": case_ctx["item_canonical"],
@@ -40,6 +46,9 @@ def to_result(case_ctx, verdict, sig_result, comment, precedents) -> dict:
         "comment": comment,
         "evidence": [{"signal_code": e["signal_code"], "value": e.get("value"),
                       "weight": e.get("weight")} for e in verdict.get("evidence", [])],
+        "signatures": sig_breakdown,
         "precedents": [{"action": p.get("action"), "result": p.get("result"),
-                        "comment": p.get("human_comment")} for p in precedents],
+                        "comment": p.get("human_comment"),
+                        "product_name": p.get("product_name"),
+                        "family_product": p.get("family_product")} for p in precedents],
     }

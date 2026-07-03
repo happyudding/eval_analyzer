@@ -31,7 +31,7 @@ def evaluate(run_input: dict, *, engine_version: str | None = None,
 ```python
 run_input = {"meta": {...}, "raw_df": df}   # df = pandas.DataFrame (아래 레이아웃)
 # columns: SERIAL,SHOT,DUT,XPOS,YPOS,BIN,FAILTNO, TESTITEM1, TESTITEM2, ...
-# row0 TSEQ / row1 TNO / row2 UNIT / row3 HILIM(USL) / row4 LOLIM(LSL) / row5+ 측정
+# row0 TSEQ / row1 TNO / row2 STEP / row3 UNIT / row4 HILIM(USL) / row5 LOLIM(LSL) / row6+ 측정
 # fail 식별 = FAILTNO(serial이 fail한 test의 TNO) == 그 item의 TNO → fail item, 그 serial BIN=fail bin
 # 사용: XPOS/YPOS/BIN/UNIT/HILIM/LOLIM/측정값/FAILTNO/TNO. 미사용: SERIAL/SHOT/DUT/TSEQ.
 ```
@@ -74,7 +74,7 @@ run_input = {
   }
 }
 ```
-- **value_type(unit계열)** 는 units 값에서 매핑(V/A/Hz/CODE/TCODE/P_F). category_major(TRIM/NON_TRIM)
+- **value_type(unit계열)** 는 units 값에서 매핑(V/A/Hz/CODE/P_F/Ohm/Sec). category_major(TRIM/NON_TRIM)
   는 item_name 에 'TRIM' 포함 여부로 판정(또는 meta 로 명시 가능).
 - **degrade 입력**: raw_table 없이 집계만 줄 수도 있음(아래). 그러면 yield-only.
 ```python
@@ -99,12 +99,20 @@ run_input = { "meta": {...},
       "confidence": 0.8, "data_completeness": "full",
       "comment": "site 3 에서만 튐, golden unit 재측정 권장 (과거 retest→정상 이력)",
       "evidence": [ {"signal_code":"OUTLIER_RATIO","value":0.06,"weight":1.0}, ... ],
+      "signatures": [
+        {"id":"SEVERE_OUTLIER","role":"primary",
+         "evidence":[{"signal_code":"OUTLIER_RATIO","value":0.06,"note":"outlier_ratio 0.06"}],
+         "action_ko":"golden unit 재측정 권장"},
+        {"id":"TAIL_RISK","role":"secondary", "evidence":[...], "action_ko":"..."}
+      ],
       "precedents": [ {"action":"retest","result":"recovered_normal","comment":"..."} ]
     },
     ...
   ]
 }
 ```
+- **signatures**: 발화한 rule(signature)별 evidence/action_ko 세분화(evidence는 전부 rule 단위로 묶여
+  primary/secondary 구분 없이 합쳐지는 evidence 필드와 달리 어떤 값이 어느 rule 근거인지 식별 가능).
 
 ## 5. 서로가 필요한 것 (상호 의존 정리)
 **report_server → eval_analyzer 에 줘야 할 것:**

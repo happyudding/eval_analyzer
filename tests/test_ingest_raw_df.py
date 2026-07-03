@@ -1,7 +1,7 @@
 """신규 raw df 포맷(REPORT_GENERATOR_DATA_REQUEST) ingest 테스트.
 
 레이아웃: columns[:7]=meta(SERIAL,SHOT,DUT,XPOS,YPOS,BIN,FAILTNO), [7:]=item.
-row0 TSEQ / row1 TNO / row2 UNIT / row3 HILIM / row4 LOLIM / row5+ 측정.
+row0 TSEQ / row1 TNO / row2 STEP / row3 UNIT / row4 HILIM / row5 LOLIM / row6+ 측정.
 fail 식별 = FAILTNO(serial이 fail한 test의 TNO) == item의 TNO.
 """
 import math
@@ -21,6 +21,7 @@ def _new_df(n_pass=20, n_fail=4):
     meta_rows = [
         ["TSEQ", None, None, None, None, None, None, 1, 2],
         ["TNO", None, None, None, None, None, None, _VREF_TNO, _IDDQ_TNO],
+        ["STEP", None, None, None, None, None, None, "P2", "P1"],
         ["UNIT", None, None, None, None, None, None, "V", "A"],
         ["HILIM", None, None, None, None, None, None, 1.4, 15.0],
         ["LOLIM", None, None, None, None, None, None, 1.0, nan],

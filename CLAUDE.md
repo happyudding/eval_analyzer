@@ -19,6 +19,18 @@
 4. **DB 에 JSON 컬럼 금지.** 다중값은 정규화 child 테이블(eval_evidence, case_signature 등).
 5. **룰 임계값 하드코딩 금지.** rules/*.yaml + calibration 분위수. 룰 스코프 = item_class(category_major|value_type|bin).
 6. **LLM 모델 하드코딩 금지.** config.EVAL_LLM_* 로 사용자 지정(없으면 템플릿 fallback).
+7. **입력 df 포맷 고정(최종).** `evaluate({"meta":.., "raw_df": df})` 의 df 레이아웃은 아래로 **불변**.
+   컬럼 순서·메타행 위치 변경 금지(바꾸면 `pipeline/ingest.py:_ingest_raw_df` 파서가 깨짐).
+   상세·필드사전은 [docs/REPORT_GENERATOR_DATA_REQUEST.md](docs/REPORT_GENERATOR_DATA_REQUEST.md).
+   ```
+   columns: SERIAL, SHOT, DUT, XPOS, YPOS, BIN, FAILTNO, TESTITEM1, TESTITEM2, ...  (meta 7개 + item)
+   row0 TSEQ / row1 TNO / row2 STEP / row3 UNIT / row4 HILIM(USL) / row5 LOLIM(LSL) / row6+ 측정
+   ```
+   - 사용: XPOS/YPOS→공간, BIN→bin, UNIT→value_type, HILIM/LOLIM→usl/lsl, TESTITEM→측정값, FAILTNO/TNO→fail.
+   - 미사용: SERIAL/SHOT/DUT/TSEQ/STEP(P1/P2/P3, 보류).
+   - **fail 식별 = FAILTNO(serial이 fail한 test의 TNO) == item의 TNO** → fail item, 그 serial BIN=fail bin.
+     FAILTNO 공란/0/NaN = pass. (limit 위반 재판정 아님)
+   - (레거시) 초기 `raw_table`(중립 dict)/`items`(degrade) 경로도 하위호환 지원.
 
 ## 구조
 ```

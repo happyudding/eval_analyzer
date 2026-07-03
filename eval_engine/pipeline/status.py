@@ -17,8 +17,8 @@ RANK_TO_STATUS = {v: k for k, v in SEVERITY_RANK.items()}
 # 구체적(원인 특정) → 일반적 순. 같은 severity 충돌 시 앞쪽이 primary.
 SPECIFICITY_ORDER = ["EQUIPMENT_SUSPECT", "EDGE_FAIL", "CENTER_FAIL", "CLUSTER_FAIL",
                      "SUBPOP_GAP", "SEVERE_OUTLIER", "MEAN_SHIFT", "TAIL_RISK",
-                     "BIDIR_TAIL", "WIDE_DISTRIBUTION", "LOW_CPK", "MARGINAL_CPK",
-                     "SPEC_TOO_TIGHT", "GROSS_FAIL"]
+                     "BIDIR_TAIL", "WIDE_DISTRIBUTION", "LOW_CPK", "SPEC_TOO_TIGHT",
+                     "GROSS_FAIL"]
 
 
 def decide(case_ctx: dict, features: dict, sig_result: dict) -> dict:

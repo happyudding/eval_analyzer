@@ -385,6 +385,8 @@ def insert_label(case_id, eval_id, human_status, root_cause_category, root_cause
 
 def insert_case_outcome(case_id, label_id, action, condition, result, resolved_by,
                         resolved_at, note, conn=None) -> int:
+    from .pipeline._rules import validate_outcome  # lazy: 순환 import 회피
+    validate_outcome(action, result)
     sql = """INSERT INTO case_outcome (case_id,label_id,action,condition,result,
              resolved_by,resolved_at,note) VALUES (?,?,?,?,?,?,?,?)"""
     with _scope(conn) as c:
@@ -408,13 +410,15 @@ def upsert_engine_version_registry(engine_version, thresholds_ref=None, threshol
                         signatures_hash, taxonomy_ref, taxonomy_hash, _now()))
 
 
-def search_precedents(bin_, value_type, item_canonical, family_product=None,
-                      limit=5, exclude_case_id=None, conn=None) -> list:
-    """DB_SCHEMA §9: 동일 bin + 동일 value_type + item_canonical 유사도>=threshold.
+def search_precedents(value_type, item_canonical, family_product=None,
+                      limit=None, exclude_case_id=None, conn=None) -> list:
+    """DB_SCHEMA §9: 동일 value_type + item_canonical 유사도>=threshold (+ family_product).
 
-    후보를 SQL 로 좁힌 뒤 difflib.SequenceMatcher.ratio 로 이름 유사도 후처리.
+    bin 은 매칭 조건에서 제외(더 폭넓게 참고). 후보를 SQL 로 좁힌 뒤
+    difflib.SequenceMatcher.ratio 로 이름 유사도 후처리.
     exclude_case_id: 자기 자신(현재 평가 중인 case)은 선례에서 제외.
-    case 당 1행(최신 label 기준, label×outcome 곱 제거), 라벨 있는 선례 우선.
+    case 당 1행(최신 label 기준, human_comment 있는 행 우선), 라벨 있는 선례 우선.
+    limit=None 이면 전체 반환(호출측에서 매칭된 선례를 모두 사용하는 것을 전제).
     DB 파일이 없으면(preview 모드 등) 빈 목록 — 빈 파일 생성/크래시 방지.
     """
     if conn is None and not config.DB_PATH.exists():
@@ -431,14 +435,14 @@ def search_precedents(bin_, value_type, item_canonical, family_product=None,
              LEFT JOIN label l ON l.case_id = fc.case_id
              LEFT JOIN case_outcome co ON co.case_id = fc.case_id
                   AND (co.label_id IS NULL OR co.label_id = l.label_id)
-             WHERE fc.bin = ? AND im.value_type = ?
+             WHERE im.value_type = ?
                AND (? IS NULL OR pm.family_product = ?)"""
     with _scope(conn) as c:
         rows = [dict(r) for r in c.execute(
-            sql, (bin_, value_type, family_product, family_product)).fetchall()]
+            sql, (value_type, family_product, family_product)).fetchall()]
 
-    def _rank(r):  # 같은 case 의 여러 (label×outcome) 행 중 대표행: 최신 label > 정보 많은 행
-        return ((r["label_id"] or 0), r["action"] is not None, r["result"] is not None)
+    def _rank(r):  # 같은 case 의 여러 (label×outcome) 행 중 대표행: 최신 label > comment 있는 행
+        return ((r["label_id"] or 0), r["human_comment"] is not None)
 
     best = {}
     for r in rows:
@@ -454,4 +458,4 @@ def search_precedents(bin_, value_type, item_canonical, family_product=None,
     out = sorted(best.values(),
                  key=lambda r: (r["human_comment"] is not None, r["similarity"]),
                  reverse=True)
-    return out[:limit]
+    return out if limit is None else out[:limit]

@@ -88,8 +88,11 @@ def test_raw_mode_attaches_precedent(fresh_db):
     result = api.evaluate(_raw_run_input(), persist=True)
     case = [c for c in result["cases"] if c["bin"] == 18][0]
     assert len(case["precedents"]) >= 1
-    assert case["precedents"][0]["action"] == "retest"
-    assert "retest" in case["comment"]  # 템플릿 코멘트에 선례 결합
+    top = case["precedents"][0]
+    assert top["action"] == "retest"
+    assert top["product_name"] == "OLD_PROD"  # 선례 제품명 통과
+    assert top["family_product"] == "SOC"
+    assert "golden unit 재측정" in case["comment"]  # 템플릿 코멘트에 human_comment 결합
 
 
 def test_idempotency_case_id_stable(fresh_db):

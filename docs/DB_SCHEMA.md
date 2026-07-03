@@ -291,10 +291,14 @@ WHERE fc.bin = :bin AND im.value_type = :value_type
 status         : CRITICAL | MAJOR | MINOR | MONITOR
 root_cause     : equipment | process | design | spec | unknown
 disposition    : retest | trim | spec_review | monitor | scrap   (label 권장조치)
-outcome.action : retest | condition_change | spec_release | dev_feedback | trim_adjust | scrap | monitor
-outcome.result : recovered_normal | confirmed_defective | improved | pending
+outcome.action : retest | condition_change | trim_adjust | spec_release | dev_feedback
+                 | pa_feedback | false_fail | scrap | monitor | other
+outcome.result : recovered_normal | improved | false_fail | confirmed_defective
+                 | inconclusive | pending | other
+                 (정본 = rules/outcome_taxonomy.yaml — ko/group 포함, insert_case_outcome
+                  에서 validate_outcome 검증. 'other' = 이스케이프값(미정의 케이스 수용))
 category_major : TRIM | NON_TRIM
-value_type     : V | A | Hz | CODE | TCODE | P_F
+value_type     : V | A | Hz | CODE | P_F | Ohm | Sec
 corner         : NN | SS | FF | (기타 코너)
 data_completeness : full | partial | low
 product_type   : MDDI | PDDI | PMIC | SECURITY | TCON

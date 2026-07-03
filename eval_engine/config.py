@@ -15,6 +15,7 @@ SIGNATURES_FILE = RULES_DIR / "signatures.yaml"
 BIN_TAXONOMY_FILE = RULES_DIR / "bin_taxonomy.yaml"
 ITEM_ALIAS_FILE = RULES_DIR / "item_alias.yaml"
 PRODUCT_TAXONOMY_FILE = RULES_DIR / "product_taxonomy.yaml"
+OUTCOME_TAXONOMY_FILE = RULES_DIR / "outcome_taxonomy.yaml"
 
 ENGINE_VERSION = os.environ.get("EVAL_ENGINE_VERSION", "ev1")
 

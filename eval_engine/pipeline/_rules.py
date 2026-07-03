@@ -33,6 +33,28 @@ def signatures_doc() -> dict:
     return load_yaml(str(config.SIGNATURES_FILE))
 
 
+def outcome_taxonomy() -> dict:
+    return load_yaml(str(config.OUTCOME_TAXONOMY_FILE))
+
+
+def outcome_label(kind: str, code: str) -> dict:
+    """kind='action'|'result', code → {'ko':.., 'group':..}. 미정의/None → {}."""
+    if not code:
+        return {}
+    return (outcome_taxonomy().get(kind) or {}).get(code, {})
+
+
+def validate_outcome(action, result) -> None:
+    """action/result 를 어휘로 강제 검증(None 은 통과). 미정의면 ValueError.
+    _validate_product_meta(ingest.py) 와 동일 패턴."""
+    tax = outcome_taxonomy()
+    for kind, code in (("action", action), ("result", result)):
+        if code is not None and code not in (tax.get(kind) or {}):
+            raise ValueError(
+                f"outcome.{kind} '{code}' 은 허용 어휘 "
+                f"{list((tax.get(kind) or {}).keys())} 에 없음")
+
+
 def bin_taxonomy_for(product_type, bin_number):
     """rules/bin_taxonomy.yaml entries 에서 (product_type, bin_number) 매칭 1건. 없으면 None."""
     try:

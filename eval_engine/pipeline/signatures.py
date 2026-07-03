@@ -44,7 +44,7 @@ def _format_evidence(template, ctx_values):
     note = re.sub(r"\{(\w+)\}", repl, template)
     primary_key = keys[0] if keys else template
     value = ctx_values.get(primary_key) if keys else None
-    value = value if isinstance(value, (int, float)) else None
+    value = round(value, 4) if isinstance(value, (int, float)) else None
     return {"signal_code": primary_key.upper(), "value": value, "note": note}
 
 

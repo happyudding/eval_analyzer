@@ -12,10 +12,11 @@
 DataFrame columns = [SERIAL, SHOT, DUT, XPOS, YPOS, BIN, FAILTNO, item1, item2, ...]
   row 0 = TSEQ (미사용)
   row 1 = TNO       (item별 test 번호 — fail 매핑 키)
-  row 2 = UNIT      (item별 단위 → value_type)
-  row 3 = HILIM     (item별 상한 = USL)
-  row 4 = LOLIM     (item별 하한 = LSL)
-  row 5~ = 측정 데이터 (DATA_START_ROW = 5)
+  row 2 = STEP      (P1/P2/P3 — 현재 미사용)
+  row 3 = UNIT      (item별 단위 → value_type)
+  row 4 = HILIM     (item별 상한 = USL)
+  row 5 = LOLIM     (item별 하한 = LSL)
+  row 6~ = 측정 데이터 (DATA_START_ROW = 6)
 열 0~6 = meta (SERIAL/SHOT/DUT/XPOS/YPOS/BIN/FAILTNO), 열 7~ = item 측정값
 ```
 - eval_analyzer 는 이 df 를 컬럼 단위로 읽어 item별 측정 벡터 + lsl/usl(LOLIM/HILIM) 확보.
