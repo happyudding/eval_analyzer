@@ -15,10 +15,11 @@ _SAMPLE_GLOB = os.path.join(
     os.path.dirname(__file__), "..", "..", "samples",
     "sample_semiconductor_1000chips_15items_stepP2_*.csv")
 
-_REQUIRED_KEYS = {"case_id", "item_canonical", "item_class", "bin", "status",
-                  "primary_signature", "secondary_signatures", "confidence",
+_REQUIRED_KEYS = {"case_id", "item_canonical", "item_raw", "item_class", "bin", "status",
+                  "issue_category", "primary_signature", "secondary_signatures", "confidence",
                   "data_completeness", "comment", "evidence", "precedents"}
 _VALID_STATUS = {"CRITICAL", "MAJOR", "MINOR", "MONITOR"}
+_VALID_CATEGORY = {"YIELD", "CPK", "ETC"}
 
 
 def _sample_paths():
@@ -38,9 +39,10 @@ def test_sample_raw_df_preview():
         for case in result["cases"]:
             assert _REQUIRED_KEYS <= set(case)
             assert case["status"] in _VALID_STATUS
+            assert case["issue_category"] in _VALID_CATEGORY
+            assert case["item_raw"]           # 원본 item명 존재 (join 키)
             assert len(case["item_class"].split("|")) == 3
-            # 정본 경로: FAILTNO==TNO 로 잡힌 fail 이므로 fail bin 은 PASS_BIN(1) 이 아니다
-            assert case["bin"] != 1
+            # bin: yield fail 이면 fail bin, cpk<cpk_warn 트리거면 PASS_BIN(1) 일 수 있음
 
 
 def test_sample_raw_df_persist(fresh_db):

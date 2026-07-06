@@ -92,7 +92,9 @@ run_input = { "meta": {...},
   "cases": [
     {
       "case_id": "<sha256>",
-      "item_canonical": "vref_trim", "item_class": "TRIM|V|18", "bin": 18,
+      "item_canonical": "vref_trim", "item_raw": "VREF_TRIM",
+      "item_class": "TRIM|V|18", "bin": 18,
+      "issue_category": "ETC",
       "status": "MAJOR",
       "primary_signature": "SEVERE_OUTLIER",
       "secondary_signatures": ["TAIL_RISK"],
@@ -113,6 +115,14 @@ run_input = { "meta": {...},
 ```
 - **signatures**: 발화한 rule(signature)별 evidence/action_ko 세분화(evidence는 전부 rule 단위로 묶여
   primary/secondary 구분 없이 합쳐지는 evidence 필드와 달리 어떤 값이 어느 rule 근거인지 식별 가능).
+- **item_raw**: 원본 item명(정규화 전). report_server Issue Table 의 `Item`/subject 컬럼과 **join 키**
+  = `(item_raw, bin)`. (`item_canonical` 은 정규화명 — 내부 매칭/선례용.)
+- **issue_category**: `YIELD | CPK | ETC`. primary_signature 기준 버킷(GROSS_FAIL→YIELD,
+  LOW_CPK/SPEC_TOO_TIGHT→CPK, 그 외→ETC). report_server 가 signature 택소노미를 몰라도 Issue Table
+  Yield/CPK/ETC 카테고리로 분류 가능(특히 지금 수기인 ETC 자동 채움). 표시라벨 매핑은 report_server 몫.
+- **cases scope(저장 기준)**: ①yield fail(FAILTNO==TNO) item×fail bin **∪** ②yield fail 은 없지만
+  cpk<cpk_warn(1.33) 인 marginal item(bin=PASS_BIN=1). 저장 판단은 rule(L3) 계산 뒤(`present.should_store`)
+  — 반환 `cases` == eval.db 저장분. (향후 "전체 rule 위반 시 저장" 으로 판단식만 확장 예정.)
 
 ## 5. 서로가 필요한 것 (상호 의존 정리)
 **report_server → eval_analyzer 에 줘야 할 것:**

@@ -5,6 +5,21 @@ persist: raw_metrics/features/evaluation/eval_evidence/case_signature 저장(sto
 to_result: RunResult.cases[i] dict (docs/INTEGRATION_CONTRACT §4).
 """
 from .. import store
+from ._rules import issue_category_for, thresholds_for
+
+
+def should_store(case_ctx, metrics, sig_result) -> bool:
+    """rule 계산 후 DB 저장 여부 판단. 지금: yield fail 또는 cpk<cpk_warn.
+
+    향후 all-rule 로 넓힐 때 아래 return 을
+      `return yield_fail or bool(sig_result.get("signatures"))` 한 줄로 교체.
+    (sig_result 는 지금 미사용이지만 그 교체를 위해 시그니처에 포함.)
+    """
+    th = thresholds_for(case_ctx)
+    yield_fail = (metrics.get("fail_count") or 0) > 0
+    cpk = metrics.get("cpk")
+    low_cpk = cpk is not None and cpk < th["cpk_warn"]
+    return yield_fail or low_cpk
 
 
 def persist(run_ctx, case_ctx, raw_metrics, features, verdict, sig_result, comment,
@@ -12,6 +27,12 @@ def persist(run_ctx, case_ctx, raw_metrics, features, verdict, sig_result, comme
     run_id = run_ctx.get("run_id")
     case_id = case_ctx["case_id"]
     with store.get_conn() as conn:
+        # fail_case/run_case 는 저장 대상(should_store 통과)에만 여기서 upsert (ingest 에서 이관).
+        store.upsert_fail_case(case_id, case_ctx["product_name"], case_ctx["lot_id"],
+                               case_ctx["wafer_number"], case_ctx["item_id"],
+                               case_ctx["bin"], case_ctx["revision"],
+                               case_ctx["item_class"], conn=conn)
+        store.link_run_case(run_id, case_id, conn=conn)
         store.save_raw_metrics(case_id, run_id, raw_metrics, conn=conn)
         store.save_features(case_id, run_id, engine_version, features, conn=conn)
         eval_id = store.save_evaluation(
@@ -36,8 +57,10 @@ def to_result(case_ctx, verdict, sig_result, comment, precedents) -> dict:
     return {
         "case_id": case_ctx["case_id"],
         "item_canonical": case_ctx["item_canonical"],
+        "item_raw": case_ctx.get("item_raw"),          # 원본 item명 (Issue Table join 키)
         "item_class": case_ctx["item_class"],
         "bin": case_ctx["bin"],
+        "issue_category": issue_category_for(verdict["primary_signature"]),  # YIELD|CPK|ETC
         "status": verdict["status"],
         "primary_signature": verdict["primary_signature"],
         "secondary_signatures": verdict["secondary_signatures"],

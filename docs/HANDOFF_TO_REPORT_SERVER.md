@@ -95,3 +95,17 @@ run_input = {"meta": meta, "raw_table": {
 - 평가결과/라벨 저장 (eval_analyzer 자체 DB 가 함).
 - cpk/산포 계산 (eval_analyzer 가 함; report_server 는 raw 만 흘려주면 됨).
 - → 즉 report_server 의 부담은 **"raw 를 버리지 않고 evaluate 로 넘기는 어댑터 + 세션 temperature/corner 입력"** 정도.
+
+## 6. evaluate() 반환을 Issue Table 에 붙이기 (join 레시피)
+> **지금 바로 붙일 필요 없음.** report_server Issue Table 포맷도 개편 예정이라, eval 은 **나중에 join 하기
+> 쉽게 출력 포맷만** 맞춰뒀다(`item_raw`/`issue_category` 필드 추가). 아래는 개편 후 wiring 가이드.
+
+방향은 **보강**(기존 Yield/CPK threshold scan 유지 + eval 로 comment/ETC 채움), 대체 아님.
+- **join 키** = `(case.item_raw, case.bin)` ↔ Issue Table 행의 `(Item/subject, Bin)`.
+  `item_raw` 는 정규화 전 원본 item명이라 그대로 매칭된다(`item_canonical` 은 내부용 정규화명).
+- **comment 열** ← `case.comment` (분석방향 한 문장). 개발/PTE 코멘트 열은 사람이 그대로 사용.
+- **카테고리 버킷** ← `case.issue_category` (`YIELD|CPK|ETC`). 특히 지금 **수기 입력인 ETC 를 eval 이 자동
+  생성**(EDGE_FAIL/CLUSTER_FAIL/SUBPOP_GAP/OUTLIER 등 10종 signature + comment). 표시라벨(Yield/CPK/ETC)
+  매핑·정렬(status 심각도)은 report_server 몫.
+- eval 케이스는 **fail 난 item 만**(FAILTNO==TNO). cpk<1.33 이지만 fail 안 난 marginal item 은 기존 CPK
+  threshold scan 이 계속 담당(그래서 "보강"). 반환 필드 상세는 INTEGRATION_CONTRACT §4.

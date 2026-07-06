@@ -45,6 +45,8 @@ def evaluate(run_input: dict, *, engine_version: str | None = None,
         f = features.compute(case, m, engine_version)      # L2 features
         sig = signatures.evaluate(case, f, m)              # L3 발화 signature 들
         verdict = status.decide(case, f, sig)              # L4 status/confidence
+        if not present.should_store(case, m, sig):         # 저장 판단(rule 계산 후): yield fail | cpk<cpk_warn
+            continue
         preced = recommend.find_precedents(case, sig)      # 선례 검색 (DB_SCHEMA §9)
         n_precedent_hits += len(preced)
         comment = recommend.make_comment(case, verdict, sig, preced,

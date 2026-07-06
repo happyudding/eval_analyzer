@@ -1,6 +1,7 @@
 # Layer2 진단 signature — feature 조합 → named 고장 모드. 선언형.
 # when_all: 모두 발화해야 / when_metric: 수치 조건 / scope: 적용 범위(item_class 등)
 # status_hint: 기본 심각도(bin_taxonomy 로 변조됨) / action_ko: 코멘트 골격 / evidence: 근거 템플릿
+# issue_category: report_server Issue Table 버킷 YIELD|CPK (미지정 시 ETC). primary 로 노출.
 version: ev1
 signatures:
   - id: WIDE_DISTRIBUTION
@@ -37,12 +38,14 @@ signatures:
     when_metric: { spread_norm: "<spread_norm_warn", cpk: "<cpk_warn",
                    center_bias: "abs<mean_shift_warn", bimodality_score: "<bimodality_warn" }
     status_hint: MINOR
+    issue_category: CPK
     action_ko: "분포는 양호(좁고·중앙·단봉)한데 cpk 낮음 — spec margin 자체 검토(spec_review)"
     evidence: ["cpk {cpk}", "spread_norm {spread_norm}"]
 
   - id: GROSS_FAIL
     when_metric: { yield: "<0.5" }
     status_hint: CRITICAL
+    issue_category: YIELD
     action_ko: "불량률 매우 높음 — 설계/마스크 등 근본 원인 점검"
     evidence: ["yield {yield}"]
 
@@ -61,6 +64,7 @@ signatures:
   - id: LOW_CPK
     when_metric: { cpk: "<cpk_warn" }
     status_hint: MAJOR
+    issue_category: CPK
     action_ko: "공정능력지수 미달(cpk<1.33) — 산포/센터링 근본 점검"
     evidence: ["cpk {cpk}"]
 

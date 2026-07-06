@@ -49,11 +49,11 @@ def test_raw_df_fail_mapping_no_persist():
     run = {"meta": _meta(), "raw_df": _new_df()}
     ctx = ingest.ingest(run, persist=False)
     cases = ctx["cases"]
-    # VREF_TRIM 만 fail(FAILTNO=101), IDDQ 는 무fail → case 1개(bin18)
-    assert len(cases) == 1
-    c = cases[0]
+    # 모든 item 이 candidate 로 방출: VREF_TRIM fail(bin18) + IDDQ 무fail(PASS_BIN candidate)
+    assert len(cases) == 2
+    c = next(x for x in cases if x["bin"] == 18)
     assert c["item_canonical"] == "vref_trim"
-    assert c["bin"] == 18
+    assert c["item_raw"] == "VREF_TRIM"      # 원본 item명 보존 (Issue Table join 키)
     assert c["value_type"] == "V"
     assert c["lsl"] == 1.0 and c["usl"] == 1.4
     # 분포는 전체 serial(측정된 값) 기준, fail_mask 는 4개만 True
@@ -61,6 +61,10 @@ def test_raw_df_fail_mapping_no_persist():
     assert sum(1 for f in c["fail_mask"] if f) == 4
     # 공간: fail serial 은 edge 좌표
     assert all(x is not None for x in c["x_pos"])
+    # IDDQ 는 fail 없음 → PASS_BIN(1) candidate, fail_mask 전부 False (저장 판단은 이후 should_store)
+    iddq = next(x for x in cases if x["bin"] == 1)
+    assert iddq["item_canonical"] == "iddq"
+    assert not any(iddq["fail_mask"])
 
 
 def test_raw_df_e2e_fires_signature(fresh_db):
@@ -70,6 +74,8 @@ def test_raw_df_e2e_fires_signature(fresh_db):
     assert len(cases) == 1
     case = cases[0]
     assert case["item_canonical"] == "vref_trim"
+    assert case["item_raw"] == "VREF_TRIM"
+    assert case["issue_category"] in {"YIELD", "CPK", "ETC"}
     assert case["status"] in {"MAJOR", "CRITICAL"}
     assert case["primary_signature"] is not None
     with store.get_conn() as conn:
@@ -78,7 +84,47 @@ def test_raw_df_e2e_fires_signature(fresh_db):
 
 
 def test_raw_df_failtno_blank_is_pass():
-    """FAILTNO 공란/NaN serial 은 fail 로 잡히지 않는다(무fail df → case 0)."""
+    """FAILTNO 공란/NaN serial 은 fail 로 잡히지 않는다. 이제 모든 item 은 PASS_BIN candidate
+    로 방출되고(저장 여부는 이후 api.evaluate 의 should_store 판단), fail_mask 는 전부 False."""
     df = _new_df(n_pass=24, n_fail=0)
     ctx = ingest.ingest({"meta": _meta(), "raw_df": df}, persist=False)
-    assert ctx["cases"] == []
+    cases = ctx["cases"]
+    assert len(cases) == 2                          # VREF_TRIM, IDDQ — 둘 다 무fail
+    assert all(c["bin"] == 1 for c in cases)        # PASS_BIN candidate
+    assert all(not any(c["fail_mask"]) for c in cases)
+
+
+_LOWCPK_COLS = ["SERIAL", "SHOT", "DUT", "XPOS", "YPOS", "BIN", "FAILTNO", "VOUT", "VREF_OK"]
+
+
+def _lowcpk_df(n=30):
+    """무fail(FAILTNO 공란) 두 item: VOUT 은 산포 넓어 cpk<1.33, VREF_OK 는 tight 해 cpk 높음."""
+    nan = float("nan")
+    meta_rows = [
+        ["TSEQ", None, None, None, None, None, None, 1, 2],
+        ["TNO", None, None, None, None, None, None, 303, 404],
+        ["STEP", None, None, None, None, None, None, "P2", "P2"],
+        ["UNIT", None, None, None, None, None, None, "V", "V"],
+        ["HILIM", None, None, None, None, None, None, 1.4, 2.0],
+        ["LOLIM", None, None, None, None, None, None, 1.0, 0.0],
+    ]
+    data_rows = []
+    for i in range(n):  # 전부 bin1, FAILTNO 공란(무fail)
+        vout = 1.20 + 0.06 * ((i % 5) - 2)   # 1.08~1.32, 넓은 산포 → cpk 낮음
+        vref = 1.00 + 0.02 * ((i % 3) - 1)   # 0.98~1.02, tight → cpk 높음
+        data_rows.append([i + 1, 1, i + 1, i % 5, i // 5, 1, nan, vout, vref])
+    return pd.DataFrame(meta_rows + data_rows, columns=_LOWCPK_COLS)
+
+
+def test_lowcpk_nofail_is_stored(fresh_db):
+    """yield fail 없어도 cpk<cpk_warn 이면 저장. cpk 높은 무fail item 은 저장 안 됨."""
+    result = api.evaluate({"meta": _meta(), "raw_df": _lowcpk_df()}, persist=True)
+    # VOUT 만 저장 대상(cpk 낮음), VREF_OK 는 제외(cpk 높고 무fail)
+    assert len(result["cases"]) == 1
+    case = result["cases"][0]
+    assert case["item_canonical"] == "vout"
+    assert case["bin"] == 1                       # PASS_BIN — yield fail 아닌 cpk 트리거
+    with store.get_conn() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM fail_case").fetchone()[0] == 1
+        cpk = conn.execute("SELECT cpk FROM raw_metrics").fetchone()[0]
+    assert cpk is not None and cpk < 1.33         # cpk<cpk_warn 이라 저장된 것

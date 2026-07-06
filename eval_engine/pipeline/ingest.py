@@ -120,10 +120,12 @@ def _tno_norm(v):
 
 
 def _case_dict(meta, case_id, item_id, item_canonical, cat, value_type, bin_,
-               revision, lsl, usl, values, fail_mask, x_pos, y_pos, site, skewness=None):
+               revision, lsl, usl, values, fail_mask, x_pos, y_pos, site, skewness=None,
+               item_raw=None):
     """fail_case context dict (raw_table/raw_df 경로 공유 — 스키마 단일 소스)."""
     return {
         "case_id": case_id, "item_id": item_id, "item_canonical": item_canonical,
+        "item_raw": item_raw,
         "category_major": cat, "value_type": value_type, "bin": bin_,
         "revision": revision, "item_class": f"{cat}|{value_type}|{bin_}",
         "product_type": meta.get("product_type"),
@@ -201,7 +203,8 @@ def _ingest_raw_table(meta, raw_table, persist, conn, alias):
                                          meta.get("wafer_number"), item_id, bin_, revision)
             cases.append(_case_dict(meta, case_id, item_id, item_canonical, cat,
                                     value_type, bin_, revision, lsl, usl,
-                                    values, fail_mask, x_pos, y_pos, site))
+                                    values, fail_mask, x_pos, y_pos, site,
+                                    item_raw=item))
     return cases
 
 
@@ -247,8 +250,6 @@ def _ingest_raw_df(meta, df, persist, conn, alias):
             for b, ft in zip(bins, failtnos):
                 if ft == tno_i and b is not None:
                     fail_bins.add(b)
-        if not fail_bins:
-            continue
 
         item_id, item_canonical, cat = _resolve_item_identity(
             item, value_type, persist, conn, alias)
@@ -257,13 +258,18 @@ def _ingest_raw_df(meta, df, persist, conn, alias):
                                    lsl, usl, conn=conn)
 
         site = [None] * len(values)
-        for bin_ in sorted(fail_bins):
-            fail_mask = [(ft == tno_i and b == bin_) for b, ft in zip(bins, failtnos)]
+        # fail bin 별 case; fail 없으면 PASS_BIN candidate 1개(저장 판단은 rule 계산 후 present.should_store)
+        for bin_ in (sorted(fail_bins) if fail_bins else [PASS_BIN]):
+            if fail_bins:
+                fail_mask = [(ft == tno_i and b == bin_) for b, ft in zip(bins, failtnos)]
+            else:
+                fail_mask = [False] * len(values)
             case_id = store.make_case_id(meta.get("product_name"), meta.get("lot_id"),
                                          meta.get("wafer_number"), item_id, bin_, revision)
             cases.append(_case_dict(meta, case_id, item_id, item_canonical, cat,
                                     value_type, bin_, revision, lsl, usl,
-                                    values, fail_mask, x_pos, y_pos, site))
+                                    values, fail_mask, x_pos, y_pos, site,
+                                    item_raw=item))
     return cases
 
 
@@ -284,6 +290,7 @@ def _ingest_degrade(meta, items, persist, conn, alias):
                                      meta.get("wafer_number"), item_id, bin_, revision)
         cases.append({
             "case_id": case_id, "item_id": item_id, "item_canonical": item_canonical,
+            "item_raw": raw_name,
             "category_major": cat, "value_type": value_type, "bin": bin_,
             "revision": revision, "item_class": f"{cat}|{value_type}|{bin_}",
             "product_type": meta.get("product_type"),
@@ -308,6 +315,8 @@ def _build_cases(meta, run_input, persist, conn):
         cases = _ingest_degrade(meta, run_input["items"], persist, conn, alias)
     for case in cases:
         case["product_name"] = meta.get("product_name")
+        case["lot_id"] = meta.get("lot_id")
+        case["wafer_number"] = meta.get("wafer_number")
     return cases
 
 
@@ -321,11 +330,7 @@ def ingest(run_input: dict, *, persist: bool = True) -> dict:
     with store.get_conn() as conn:
         store.upsert_product_master(meta, conn=conn)
         run_id = store.create_ingest_run(meta, conn=conn)
+        # fail_case/run_case 는 여기서 쓰지 않는다 — rule 계산 후 present.persist 가
+        # 저장 대상(should_store 통과)에만 upsert. (product/item master·spec 는 위에서 upsert.)
         cases = _build_cases(meta, run_input, persist=True, conn=conn)
-        for case in cases:
-            store.upsert_fail_case(case["case_id"], meta.get("product_name"),
-                                   meta.get("lot_id"), meta.get("wafer_number"),
-                                   case["item_id"], case["bin"], case["revision"],
-                                   case["item_class"], conn=conn)
-            store.link_run_case(run_id, case["case_id"], conn=conn)
     return {"run_id": run_id, "cases": cases}

@@ -33,6 +33,20 @@ def signatures_doc() -> dict:
     return load_yaml(str(config.SIGNATURES_FILE))
 
 
+def issue_category_for(signature_id) -> str:
+    """primary signature id → report_server Issue Table 버킷 'YIELD'|'CPK'|'ETC'.
+
+    signatures.yaml 의 issue_category 선언을 읽고, 미지정/None/미매칭은 'ETC'(기본).
+    report_generator 가 signature 택소노미를 몰라도 카테고리 분류가 되게 하는 편의 필드.
+    """
+    if not signature_id:
+        return "ETC"
+    for s in signatures_doc().get("signatures", []):
+        if s.get("id") == signature_id:
+            return s.get("issue_category") or "ETC"
+    return "ETC"
+
+
 def outcome_taxonomy() -> dict:
     return load_yaml(str(config.OUTCOME_TAXONOMY_FILE))
 
