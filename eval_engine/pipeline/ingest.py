@@ -15,12 +15,15 @@
   이 모드의 case_id 는 persist=True 재실행 시 달라질 수 있다(preview 전용).
 """
 import hashlib
+import logging
 import math
 import re
 
 from .. import store
 from ._rules import load_yaml
 from .. import config
+
+logger = logging.getLogger(__name__)
 
 PASS_BIN = 1
 
@@ -34,6 +37,40 @@ UNIT_TO_VALUE_TYPE = {
     "p_f": "P_F", "pass/fail": "P_F", "p/f": "P_F", "": "P_F",
 }
 PHASE_TOKENS = {"init", "code", "trim", "p2", "p1", "final"}
+
+# 정본 raw_df 레이아웃(REPORT_GENERATOR_DATA_REQUEST) — 파서가 위치/이름으로 고정 접근.
+_META_COLS = ["SERIAL", "SHOT", "DUT", "XPOS", "YPOS", "BIN", "FAILTNO"]
+_META_ROW_LABELS = ["TSEQ", "TNO", "STEP", "UNIT", "HILIM", "LOLIM"]
+
+
+def _norm(x):
+    return str(x).strip().lstrip("﻿").upper()
+
+
+def _validate_raw_df(df) -> None:
+    """정본 raw_df 레이아웃 선검증 — 계약 위반 시 명확한 ValueError(파서 위치/이름 접근 전에 차단).
+
+    _ingest_raw_df 가 cols[7:]=item, iloc[1/3/4/5]=메타행, data[XPOS/YPOS/BIN/FAILTNO] 로
+    고정 접근하므로, 어긋나면 조용한 0케이스/opaque 에러 대신 여기서 원인을 legible 하게 잡는다.
+    비교는 정규화(strip+BOM제거+대문자)로 BOM/공백/대소문자에 견고.
+    """
+    n_rows, n_cols = df.shape
+    if n_cols < len(_META_COLS) + 1:
+        raise ValueError(f"raw_df 컬럼 {n_cols}개 - meta 7 + item 1개 이상 = 최소 8개 필요")
+    if n_rows < len(_META_ROW_LABELS):
+        raise ValueError(
+            f"raw_df 행 {n_rows}개 - 메타행 6개({'/'.join(_META_ROW_LABELS)}) 필요")
+    got_cols = [_norm(c) for c in list(df.columns[:7])]
+    if got_cols != _META_COLS:
+        raise ValueError(f"raw_df 앞 7 meta 컬럼 불일치 - 기대 {_META_COLS}, 실제 {got_cols}")
+    got_labels = [_norm(df.iloc[i, 0]) for i in range(len(_META_ROW_LABELS))]
+    if got_labels != _META_ROW_LABELS:
+        raise ValueError(
+            f"raw_df 메타행 순서 불일치 - 기대 {_META_ROW_LABELS}, 실제 {got_labels}")
+    item_cols = list(df.columns[7:])
+    dups = sorted({c for c in item_cols if item_cols.count(c) > 1})
+    if dups:
+        raise ValueError(f"raw_df item 컬럼 중복: {dups}")
 
 
 def _validate_product_meta(meta: dict) -> None:
@@ -217,6 +254,7 @@ def _ingest_raw_df(meta, df, persist, conn, alias):
     fail 식별: FAILTNO(serial이 fail한 test의 TNO) == 그 item의 TNO → fail item, 그 serial BIN=fail bin.
     per-DUT dict 미생성 — 컬럼을 병렬 배열로 직접 읽는다.
     """
+    _validate_raw_df(df)
     revision = meta.get("revision")
     cols = list(df.columns)
     item_cols = cols[7:]
@@ -270,6 +308,10 @@ def _ingest_raw_df(meta, df, persist, conn, alias):
                                     value_type, bin_, revision, lsl, usl,
                                     values, fail_mask, x_pos, y_pos, site,
                                     item_raw=item))
+    if item_cols and len(data) > 0 and not cases:
+        logger.warning("raw_df: item %d개, 데이터 %d행이나 case 0 - item 셀 dtype 확인"
+                       "(문자열이면 파서가 무시, docs/EVALUATE_RETURN_SPEC 6절)",
+                       len(item_cols), len(data))
     return cases
 
 

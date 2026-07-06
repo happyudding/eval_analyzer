@@ -4,9 +4,11 @@
 row0 TSEQ / row1 TNO / row2 STEP / row3 UNIT / row4 HILIM / row5 LOLIM / row6+ 측정.
 fail 식별 = FAILTNO(serial이 fail한 test의 TNO) == item의 TNO.
 """
+import logging
 import math
 
 import pandas as pd
+import pytest
 
 from eval_engine import api, store
 from eval_engine.pipeline import ingest
@@ -128,3 +130,45 @@ def test_lowcpk_nofail_is_stored(fresh_db):
         assert conn.execute("SELECT COUNT(*) FROM fail_case").fetchone()[0] == 1
         cpk = conn.execute("SELECT cpk FROM raw_metrics").fetchone()[0]
     assert cpk is not None and cpk < 1.33         # cpk<cpk_warn 이라 저장된 것
+
+
+# --- 레이아웃 구조 선검증(_validate_raw_df) — 계약 위반 시 명확한 ValueError -------------
+
+def test_raw_df_rejects_wrong_meta_columns():
+    df = _new_df()
+    df.columns = ["SERIAL", "SHOT", "DUT", "XPOS", "YPOS", "BIN", "WRONG", "VREF_TRIM", "IDDQ"]
+    with pytest.raises(ValueError, match="meta 컬럼"):
+        ingest.ingest({"meta": _meta(), "raw_df": df}, persist=False)
+
+
+def test_raw_df_rejects_reordered_meta_rows():
+    df = _new_df()
+    df.iloc[2, 0], df.iloc[3, 0] = "UNIT", "STEP"   # STEP↔UNIT 라벨 교환
+    with pytest.raises(ValueError, match="메타행"):
+        ingest.ingest({"meta": _meta(), "raw_df": df}, persist=False)
+
+
+def test_raw_df_rejects_too_few_rows():
+    df = pd.DataFrame([[lab, None, None, None, None, None, None, 1, 2]
+                       for lab in ["TSEQ", "TNO", "STEP", "UNIT", "HILIM"]],  # 메타행 5개뿐
+                      columns=_COLS)
+    with pytest.raises(ValueError, match="메타행 6개"):
+        ingest.ingest({"meta": _meta(), "raw_df": df}, persist=False)
+
+
+def test_raw_df_rejects_duplicate_items():
+    df = _new_df()
+    df.columns = _COLS[:7] + ["IDDQ", "IDDQ"]        # item 컬럼 중복
+    with pytest.raises(ValueError, match="중복"):
+        ingest.ingest({"meta": _meta(), "raw_df": df}, persist=False)
+
+
+def test_raw_df_warns_on_nonnumeric_items(caplog):
+    """item 데이터셀이 전부 문자열 → 파서가 무시해 case 0. 하드에러 아님, warning 으로 legible."""
+    df = _new_df(n_pass=4, n_fail=0)
+    for col in ("VREF_TRIM", "IDDQ"):
+        df.loc[6:, col] = df.loc[6:, col].astype(str)   # 데이터행만 문자열화
+    with caplog.at_level(logging.WARNING):
+        ctx = ingest.ingest({"meta": _meta(), "raw_df": df}, persist=False)
+    assert ctx["cases"] == []
+    assert "case 0" in caplog.text

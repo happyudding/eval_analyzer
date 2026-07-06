@@ -55,9 +55,10 @@ def evaluate(run_input: dict, *, engine_version: str | None = None,
             present.persist(run_ctx, case, m, f, verdict, sig, comment, engine_version, model_version)
         results.append(present.to_result(case, verdict, sig, comment, preced))
 
-    logger.info("evaluate 완료 run_id=%s cases=%d precedent_hits=%d %.1fms",
-                run_ctx.get("run_id"), len(results), n_precedent_hits,
-                (time.perf_counter() - t0) * 1000)
+    n_candidates = len(run_ctx["cases"])
+    logger.info("evaluate 완료 run_id=%s candidates=%d stored=%d gated=%d precedent_hits=%d %.1fms",
+                run_ctx.get("run_id"), n_candidates, len(results), n_candidates - len(results),
+                n_precedent_hits, (time.perf_counter() - t0) * 1000)
     return {
         "run_id": run_ctx.get("run_id"),
         "engine_version": engine_version,
