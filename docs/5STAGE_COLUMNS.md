@@ -62,14 +62,17 @@ spec margin: spec_margin_low/high((mean−limit)/stdev), nearest_spec_side(LOW/H
 
 ## [4] VERDICT
 **evaluation** ((case,run,engine,model)당 1행)
-- status : CRITICAL/MAJOR/MINOR/MONITOR. · confidence : 신뢰도. · data_completeness : full/partial/low.
+- status : CRITICAL/MAJOR/MINOR/MONITOR/OK (OK=signature 0건+full 데이터, MONITOR=signature 0건+결측).
+  · confidence : 신뢰도. · data_completeness : full/partial/low.
 - comment : 엔진 생성 코멘트(재생성 가능 캐시). · engine_version/model_version : 결정로직/LLM 버전.
 **eval_evidence** ((eval,signal)당 1행) — JSON 대신 정규화
 - signal_code(LOW_CPK 등) / value / weight / note.
 **case_signature** ((eval,signature)당 1행)
 - signature / role(primary·secondary) / score.
-- signature 목록: EQUIPMENT_SUSPECT, MEAN_SHIFT, WIDE_DISTRIBUTION, SEVERE_OUTLIER, TAIL_RISK,
-  BIMODAL, SPEC_TOO_TIGHT, EDGE_FAIL, GROSS_FAIL, (보류) SUBPOP_GAP·CODE_RAIL·BIDIR_TAIL·TRIM_INEFFECTIVE·RETEST_RECOVERY.
+- signature 목록(정본 = rules/signatures.yaml): EQUIPMENT_SUSPECT, EDGE_FAIL, CENTER_FAIL, CLUSTER_FAIL,
+  CODE_RAIL, SUBPOP_GAP(이봉), SEVERE_OUTLIER, OUTLIER_WARN, MEAN_SHIFT, TAIL_RISK, HEAVY_TAIL,
+  BIDIR_TAIL, WIDE_DISTRIBUTION, LOW_CPK, SPEC_TOO_TIGHT, GROSS_FAIL.
+  (보류) gradient(radial/x/y)·TRIM_INEFFECTIVE·RETEST_RECOVERY.
 
 ## [5] HUMAN
 **label** (라벨 이벤트당 1행, case당 다중)

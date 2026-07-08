@@ -11,12 +11,12 @@
 |---|---|---|
 | `api.py` | `evaluate()` 진입점 — L0~L6 순서대로 호출(아래 흐름). 얇은 오케스트레이터. | 완성 |
 | `config.py` | DB 경로 / rules 파일 경로 / LLM·선례 백엔드 설정. **전부 env override**. | 완성 |
-| `store.py` | eval.db 스키마(DDL 16테이블) + CRUD + `make_case_id` + `search_precedents`(SQL 선례). | 완성 |
+| `store.py` | eval.db 스키마(DDL 17테이블) + CRUD + `make_case_id` + `search_precedents`(SQL 선례). | 완성 |
 | `pipeline/` | L0~L6 실제 로직. → [pipeline/CLAUDE.md](pipeline/CLAUDE.md) | 완성 |
 | `rules/` | thresholds/signatures/taxonomy yaml(임계값·룰 선언형). → [rules/CLAUDE.md](rules/CLAUDE.md) | 완성 |
 | `precedent_client.py` | 선례검색 어댑터 경계(sql 기본 \| rag 교체). `_rag_search` 는 스텁. | sql 완성 / rag 미구현 |
 | `llm_client.py` | 교체형 LLM 어댑터. `is_enabled()` + `complete()`. 모델 하드코딩 금지. | `complete()` 미구현 |
-| `calibrate.py` | 오프라인 분위수 보정 + comment 채굴 → thresholds.yaml 갱신. | 미구현(스텁) |
+| `calibrate.py` | 오프라인 분위수 보정 → thresholds.yaml item_class 갱신 + engine_version 등록. | 분위수 보정 완성 / comment 채굴·검증 후속 |
 | `cli.py` | 얇은 테스트/보정 CLI. init/run/seed/calibrate. | 완성 |
 
 ## evaluate() 흐름 (api.py)
@@ -40,13 +40,14 @@ L6 present   결과 dict 직렬화 (+ persist 시 eval.db 적재, raw 는 저장
 
 ## 실행 / 검증
 ```
-python -m eval_engine.cli init          # eval.db 생성(16테이블 + bin_taxonomy 시드 + user_version)
+python -m eval_engine.cli init          # eval.db 생성(17테이블 + bin_taxonomy 시드 + user_version)
 python -m eval_engine.cli run <csv>     # degrade / df_honey(raw_table) CSV E2E
-python -m pytest -q                     # 전체 테스트(현재 48 통과)
+python -m eval_engine.cli calibrate     # 누적 features 분위수 → thresholds.yaml item_class 갱신
+python -m pytest -q                     # 전체 테스트
 ```
 > 신규 정본 raw_df 포맷 E2E 는 CLI 가 아니라 [tools/testbench_eval.py](../tools/CLAUDE.md) 사용.
 
 ## 미구현(후속 작업)
 - `llm_client.complete()` — 사용자 지정 endpoint 로 HTTP POST(OpenAI 호환 shape). 실패 시 상위에서 템플릿 fallback.
-- `calibrate.recalibrate()` — 누적 데이터 분위수 → thresholds.yaml 갱신 + engine_version 등록.
+- `calibrate` comment 채굴(label/outcome 군집) + 룰 precision/recall 검증 — 분위수 보정은 구현됨.
 - `precedent_client._rag_search()` — RAG 선례 백엔드(상대측). 계약: [../docs/PRECEDENT_RAG_HANDOFF.md](../docs/PRECEDENT_RAG_HANDOFF.md).

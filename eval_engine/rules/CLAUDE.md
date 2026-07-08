@@ -6,7 +6,7 @@
 ## 파일 지도
 | 파일 | 역할 | 로더 |
 |---|---|---|
-| `thresholds.yaml` | 룰 임계값. `default → product_type → item_class` 병합(구체값 우선). calibrate 가 분위수로 갱신 대상. | `thresholds_for(case_ctx)` |
+| `thresholds.yaml` | 룰 임계값. `default → product_type → item_class` 병합(구체값 우선). `calibration:` 섹션 = 보정 스펙, `item_class:` 는 calibrate 가 재작성(**파일 마지막 섹션 유지**). | `thresholds_for(case_ctx)` |
 | `signatures.yaml` | Layer2 진단 signature 선언(feature 조합 → 고장모드). | `signatures_doc()` |
 | `bin_taxonomy.yaml` | (product_type, bin) → bin_class/severity_bias. `store.init_db()` 가 DB 로 시드. | `bin_taxonomy_for()` / store 시드 |
 | `product_taxonomy.yaml` | 허용 product_type ↔ family_product 조합. ingest 가 강제 검증(1:1 드롭다운 전제). | `_validate_product_meta()` |
@@ -34,8 +34,9 @@ default (cold-start 표준 robust 시드)
 - signature 추가 시 체크: (1) status.py `SPECIFICITY_ORDER` 에 id 추가, (2) 필요한 임계값 키를 thresholds 에 추가.
 
 ## calibrate 와의 관계
-`calibrate.recalibrate()`(미구현)가 누적 데이터의 분위수로 `thresholds.yaml` 을 갱신하고
-새 `engine_version` 을 `engine_version_registry`(파일 ref+hash)에 등록하는 흐름. 현재는 cold-start 시드값.
+`calibrate.recalibrate()`가 누적 features 분위수(`calibration:` 스펙, item_class 별 `min_n` 이상)로
+`item_class:` 섹션을 재작성(기존 수동 항목 병합 보존)하고, 새 `engine_version` 을
+`engine_version_registry`(파일 ref+sha256)에 등록한다. default 시드값은 건드리지 않는다.
 
 ## 관련 문서
 - [../../docs/DB_SCHEMA.md](../../docs/DB_SCHEMA.md)(bin_taxonomy/engine_version_registry), [../../docs/5STAGE_COLUMNS.md](../../docs/5STAGE_COLUMNS.md)(feature 의미).

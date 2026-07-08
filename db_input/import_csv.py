@@ -7,7 +7,10 @@
 
 CSV 컬럼(template_example.csv 참고):
   product_name, product_type, family_product, lot_id, wafer_number, revision,
-  item_name, value_type, bin, USL, LSL, average, stdev, human_comment, session_id
+  item_name, value_type, bin, USL, LSL, average, stdev, human_comment, session_id,
+  human_status, root_cause_category, outcome_action, outcome_condition, outcome_result
+  (뒤 5개는 선택 — human_status/root_cause 는 label 로, outcome_* 는 case_outcome 으로 적재.
+   outcome_action/result 는 rules/outcome_taxonomy.yaml 어휘로 검증됨.)
 
 session_id: report_server report_session.session_id 역참조(선택, 있으면). analysis_key(컨텐츠
 해시)와 달리 업로드/실행 이벤트마다 새로 생성되는 ID. 같은 session_id 를 가진 행들은
@@ -54,7 +57,9 @@ def _to_float(s):
 
 
 def _cpk_summary(avg, stdev, lsl, usl):
-    """CODE_TO_PORT.md §2 공식. 네 값이 모두 있고 stdev>0 일 때만 계산."""
+    """CODE_TO_PORT.md §2 공식. 네 값이 모두 있고 stdev>0 일 때만 계산.
+    eval_engine/pipeline/metrics.py:cpk_summary(raw 배열 입력)와 같은 공식의
+    요약통계 입력판 — 공식 수정 시 양쪽을 함께 바꿀 것."""
     if avg is None or stdev is None or lsl is None or usl is None or stdev == 0:
         return {}
     cpl = (avg - lsl) / (3 * stdev)
@@ -148,16 +153,62 @@ def _import_group(product_type, family_product, session_id, rows, csv_path, db_p
                 store.save_raw_metrics(case_id, run_id, metrics, conn=conn)
 
             human_comment = (r.get("human_comment") or "").strip() or None
-            if human_comment:
-                # 같은 case_id 에 라벨이 이미 있으면 건너뜀 (재실행 시 중복 삽입 방지,
+            human_status = (r.get("human_status") or "").strip() or None
+            root_cause = (r.get("root_cause_category") or "").strip() or None
+            label_id = None
+            if human_comment or human_status or root_cause:
+                # 같은 case_id 에 라벨이 이미 있으면 재사용 (재실행 시 중복 삽입 방지,
                 # tools/seed_demo_precedents.py 와 동일 관례)
                 existing_label = conn.execute(
-                    "SELECT 1 FROM label WHERE case_id=?", (case_id,)).fetchone()
-                if not existing_label:
-                    store.insert_label(case_id, None, None, None, None, 0, 0,
-                                       human_comment, "db_input", None, "manual", conn=conn)
+                    "SELECT label_id FROM label WHERE case_id=?", (case_id,)).fetchone()
+                if existing_label:
+                    label_id = existing_label["label_id"]
+                else:
+                    label_id = store.insert_label(
+                        case_id, None, human_status, root_cause, None, 0, 0,
+                        human_comment, "db_input", None, "manual", conn=conn)
+
+            action = (r.get("outcome_action") or "").strip() or None
+            condition = (r.get("outcome_condition") or "").strip() or None
+            result = (r.get("outcome_result") or "").strip() or None
+            if action or condition or result:
+                # case 당 outcome 1건 (label 과 동일한 재실행 idempotent 관례)
+                existing_outcome = conn.execute(
+                    "SELECT outcome_id, label_id FROM case_outcome WHERE case_id=?",
+                    (case_id,)).fetchone()
+                if not existing_outcome:
+                    store.insert_case_outcome(case_id, label_id, action, condition,
+                                              result, None, None, None, conn=conn)
+                elif existing_outcome["label_id"] is None and label_id is not None:
+                    # 이전 임포트에 outcome 만 먼저 들어온 경우 label 연결 백필
+                    conn.execute("UPDATE case_outcome SET label_id=? WHERE outcome_id=?",
+                                 (label_id, existing_outcome["outcome_id"]))
 
     return db_path, len(rows)
+
+
+def import_rows(rows, source_path, unified=False):
+    """(product_type, family_product, session_id) 그룹별 분리 적재 — main/import_text 공용.
+
+    unified 모드: 모든 그룹을 운영 eval.db(config.DB_PATH, EVAL_DB_PATH env 존중) 하나로 적재
+    → search_precedents 가 바로 참조. 기본(비-unified): 제품군별 output/<pt>_<fp>.db 분리.
+    반환: [(product_type, family_product, n, db_path, session_id), ...]
+    """
+    eval_db = Path(config.DB_PATH)   # override 전에 캡처
+
+    groups = {}
+    for r in rows:
+        session_id = (r.get("session_id") or "").strip() or None
+        key = (_require(r, "product_type"), _require(r, "family_product"), session_id)
+        groups.setdefault(key, []).append(r)
+
+    results = []
+    for (product_type, family_product, session_id), group_rows in groups.items():
+        db_path = eval_db if unified else OUTPUT_DIR / f"{product_type}_{family_product}.db"
+        db_path, n = _import_group(product_type, family_product, session_id, group_rows,
+                                   source_path, db_path)
+        results.append((product_type, family_product, n, db_path, session_id))
+    return results
 
 
 def main(argv=None):
@@ -169,21 +220,8 @@ def main(argv=None):
         return
     csv_path = argv[0]
     rows = _read_rows(csv_path)
-
-    # unified 모드: 모든 그룹을 운영 eval.db(config.DB_PATH, EVAL_DB_PATH env 존중) 하나로 적재
-    # → search_precedents 가 바로 참조. 기본(비-unified): 제품군별 output/<pt>_<fp>.db 분리.
-    eval_db = Path(config.DB_PATH)   # override 전에 캡처
-
-    groups = {}
-    for r in rows:
-        session_id = (r.get("session_id") or "").strip() or None
-        key = (_require(r, "product_type"), _require(r, "family_product"), session_id)
-        groups.setdefault(key, []).append(r)
-
-    for (product_type, family_product, session_id), group_rows in groups.items():
-        db_path = eval_db if unified else OUTPUT_DIR / f"{product_type}_{family_product}.db"
-        db_path, n = _import_group(product_type, family_product, session_id, group_rows,
-                                   csv_path, db_path)
+    for product_type, family_product, n, db_path, session_id in import_rows(
+            rows, csv_path, unified):
         print(f"[{product_type}_{family_product}] {n}건 적재 -> {db_path}"
               + (f" (session_id={session_id})" if session_id else ""))
 

@@ -1,4 +1,4 @@
-# eval_analyzer — Claude Code 진입점
+# eval_analyzer — Codex 진입점
 
 반도체 Fail-Item 평가 분석 엔진. 엔지니어의 fail 판단(status 판정 + 분석방향 comment)을
 코드로 옮긴다. **report_server 와 완전 독립**.
@@ -12,17 +12,17 @@
 > [docs/HANDOFF_TO_REPORT_SERVER.md](docs/HANDOFF_TO_REPORT_SERVER.md)(상대측 작업).
 
 ## 블록 지도 (오케스트레이션)
-각 블록 디렉터리에 작업용 `CLAUDE.md`(무엇을 어디서 만지나)를 둔다. 그 블록에서 작업하는 세션은
-해당 파일 하나만 먼저 읽으면 된다(Claude Code 가 하위 CLAUDE.md 를 자동 로드). 설계 정본은 항상 `docs/`.
+각 블록 디렉터리에 작업용 `AGENTS.md`(무엇을 어디서 만지나)를 둔다. 그 블록에서 작업하는 세션은
+해당 파일 하나만 먼저 읽으면 된다(Codex 가 하위 AGENTS.md 를 자동 로드). 설계 정본은 항상 `docs/`.
 
 | 블록 | 진입 문서 | 역할 |
 |---|---|---|
-| 엔진 패키지 | [eval_engine/CLAUDE.md](eval_engine/CLAUDE.md) | `evaluate()` + config/store/cli/어댑터. 파일 지도·미구현 목록. |
-| 판단 파이프라인 | [eval_engine/pipeline/CLAUDE.md](eval_engine/pipeline/CLAUDE.md) | L0~L6 단계별 함수·raw_df 파싱·결측 규칙·status 판정. |
-| 룰/임계값 | [eval_engine/rules/CLAUDE.md](eval_engine/rules/CLAUDE.md) | thresholds/signatures/taxonomy yaml 스키마·스코프. |
-| 선례 적재기 | [db_input/CLAUDE.md](db_input/CLAUDE.md) | 과거 사례 CSV → 제품군별 선례 DB. |
-| 도구/testbench | [tools/CLAUDE.md](tools/CLAUDE.md) | 샘플 생성·콘솔 testbench(+ ⚠ 레이아웃 드리프트). |
-| 테스트 | [tests/CLAUDE.md](tests/CLAUDE.md) | 스위트 지도·DB 격리 규칙. |
+| 엔진 패키지 | [eval_engine/AGENTS.md](eval_engine/AGENTS.md) | `evaluate()` + config/store/cli/어댑터. 파일 지도·미구현 목록. |
+| 판단 파이프라인 | [eval_engine/pipeline/AGENTS.md](eval_engine/pipeline/AGENTS.md) | L0~L6 단계별 함수·raw_df 파싱·결측 규칙·status 판정. |
+| 룰/임계값 | [eval_engine/rules/AGENTS.md](eval_engine/rules/AGENTS.md) | thresholds/signatures/taxonomy yaml 스키마·스코프. |
+| 선례 적재기 | [db_input/AGENTS.md](db_input/AGENTS.md) | 과거 사례 CSV → 제품군별 선례 DB. |
+| 도구/testbench | [tools/AGENTS.md](tools/AGENTS.md) | 샘플 생성·콘솔 testbench(+ ⚠ 레이아웃 드리프트). |
+| 테스트 | [tests/AGENTS.md](tests/AGENTS.md) | 스위트 지도·DB 격리 규칙. |
 
 - `docs/` — 설계·계약·핸드오프 정본(위 세션 시작 규칙). `seeds/`·`samples/` — 예시 데이터.
 - `../plotly_sqlite/` — **별도 대시보드 앱**(독립 프로젝트, 자체 requirements). 엔진과 결합 아님, 참고만.
@@ -74,7 +74,7 @@ data/               eval.db (런타임 생성, gitignore)
 7. `cli.py run/seed` 로 seeds/background_seed_example.csv + 샘플 raw 1개 E2E 검증.
 
 ## 검증
-`python -m eval_engine.cli init` → 17개 테이블 + bin_taxonomy 시드 + `PRAGMA user_version` 확인.
+`python -m eval_engine.cli init` → 16개 테이블 + bin_taxonomy 시드 + `PRAGMA user_version` 확인.
 이후 `... run <sample.csv>` 로 evaluate() E2E. `python -m pytest -q` 로 전체 테스트.
-현재 상태: L0~L6 파이프라인·store CRUD·선례검색(SQL)·분위수 보정(calibrate) 구현 완료(테스트 통과).
-미구현: llm_client.complete(HTTP 호출), RAG 선례 백엔드(상대측), calibrate comment 채굴/검증.
+현재 상태: L0~L6 파이프라인·store CRUD·선례검색(SQL) 구현 완료(테스트 통과).
+미구현: calibrate.recalibrate(분위수 보정), llm_client.complete(HTTP 호출), RAG 선례 백엔드(상대측).

@@ -52,7 +52,8 @@ def evaluate(run_input: dict, *, engine_version: str | None = None,
         comment = recommend.make_comment(case, verdict, sig, preced,
                                          model_version=model_version)  # L5
         if persist:
-            present.persist(run_ctx, case, m, f, verdict, sig, comment, engine_version, model_version)
+            present.persist(run_ctx, case, m, f, verdict, sig, comment, engine_version,
+                            model_version, precedents=preced)
         results.append(present.to_result(case, verdict, sig, comment, preced))
 
     n_candidates = len(run_ctx["cases"])

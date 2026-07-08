@@ -157,3 +157,62 @@ def test_insert_case_outcome_rejects_unknown_vocab(fresh_db):
     with store.get_conn() as conn:
         with pytest.raises(ValueError):
             _seed_precedent(conn, action="bogus_action")
+
+
+# ── 스키마 v4 ────────────────────────────────────────────────────────────────
+def test_schema_v4_user_version_and_objects(fresh_db):
+    with store.get_conn() as conn:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 4
+        tables = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'")}
+        assert "eval_precedent" in tables
+        indexes = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index'")}
+        assert {"idx_item_master_value_type", "idx_product_master_family",
+                "idx_fail_case_item"} <= indexes
+        assert "updated_at" in {r[1] for r in conn.execute("PRAGMA table_info(evaluation)")}
+        assert "created_at" in {r[1] for r in conn.execute("PRAGMA table_info(case_outcome)")}
+
+
+def test_migrate_v3_to_v4_idempotent(fresh_db):
+    with store.get_conn() as conn:
+        store._migrate_v3_to_v4(conn)  # 이미 v4 인 DB 에 재적용 — no-op 이어야 함
+        store._migrate_v3_to_v4(conn)
+
+
+def test_case_outcome_created_at_populated(fresh_db):
+    with store.get_conn() as conn:
+        case_id = _seed_precedent(conn)
+        row = conn.execute("SELECT created_at FROM case_outcome WHERE case_id=?",
+                           (case_id,)).fetchone()
+        assert row["created_at"] is not None
+
+
+def test_evaluation_updated_at_set_on_resave(fresh_db):
+    with store.get_conn() as conn:
+        eval_id = store.save_evaluation("C1", 1, "ev1", None, "MAJOR", 0.9, "full",
+                                        "첫 판정", conn=conn)
+        row = conn.execute("SELECT updated_at FROM evaluation WHERE eval_id=?",
+                           (eval_id,)).fetchone()
+        assert row["updated_at"] is None          # 최초 insert
+        eval_id2 = store.save_evaluation("C1", 1, "ev1", None, "MINOR", 0.9, "full",
+                                         "재판정", conn=conn)
+        assert eval_id2 == eval_id                # 같은 키 → upsert
+        row = conn.execute("SELECT status, updated_at FROM evaluation WHERE eval_id=?",
+                           (eval_id,)).fetchone()
+        assert row["status"] == "MINOR"
+        assert row["updated_at"] is not None      # 갱신 시각 기록
+
+
+def test_save_eval_precedents_roundtrip(fresh_db):
+    precedents = [{"case_id": "PC1", "similarity": 0.95},
+                  {"case_id": "PC2", "similarity": 0.80},
+                  {"similarity": 0.99}]  # case_id 없는 행(RAG 등)은 skip
+    with store.get_conn() as conn:
+        store.save_eval_precedents(7, precedents, conn=conn)
+        rows = conn.execute("""SELECT precedent_case_id, rank, similarity
+                               FROM eval_precedent WHERE eval_id=7 ORDER BY rank""").fetchall()
+        assert [(r["precedent_case_id"], r["rank"]) for r in rows] == [("PC1", 1), ("PC2", 2)]
+        store.save_eval_precedents(7, precedents, conn=conn)  # 재저장 idempotent
+        n = conn.execute("SELECT COUNT(*) FROM eval_precedent WHERE eval_id=7").fetchone()[0]
+        assert n == 2

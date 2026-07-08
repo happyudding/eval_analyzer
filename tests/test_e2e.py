@@ -5,7 +5,7 @@ _REQUIRED_KEYS = {"case_id", "item_canonical", "item_class", "bin", "status",
                   "primary_signature", "secondary_signatures", "confidence",
                   "data_completeness", "comment", "evidence", "precedents"}
 
-_VALID_STATUS = {"CRITICAL", "MAJOR", "MINOR", "MONITOR"}
+_VALID_STATUS = {"CRITICAL", "MAJOR", "MINOR", "MONITOR", "OK"}
 
 
 def _raw_run_input(n_pass=20, n_fail=4):
@@ -93,6 +93,21 @@ def test_raw_mode_attaches_precedent(fresh_db):
     assert top["product_name"] == "OLD_PROD"  # 선례 제품명 통과
     assert top["family_product"] == "SOC"
     assert "golden unit 재측정" in case["comment"]  # 템플릿 코멘트에 human_comment 결합
+    # 선례 사용 이력(eval_precedent) 저장 확인
+    with store.get_conn() as conn:
+        n = conn.execute("SELECT COUNT(*) FROM eval_precedent").fetchone()[0]
+        assert n >= 1
+
+
+def test_ingest_rejects_missing_input_keys():
+    meta = {"product_name": "P1", "product_type": "PMIC", "family_product": "SOC",
+            "revision": 0.0, "lot_id": "L1", "wafer_number": 1}
+    import pytest
+    from eval_engine.pipeline import ingest
+    with pytest.raises(ValueError, match="raw_df / raw_table / items"):
+        ingest.ingest({"meta": meta}, persist=False)
+    with pytest.raises(ValueError, match="raw_table 필수 키"):
+        ingest.ingest({"meta": meta, "raw_table": {"rows": []}}, persist=False)
 
 
 def test_idempotency_case_id_stable(fresh_db):

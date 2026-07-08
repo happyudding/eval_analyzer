@@ -12,7 +12,7 @@ import yaml
 
 from . import config
 
-SCHEMA_VERSION = 3  # PRAGMA user_version. 스키마 변경 시 +1 하고 _MIGRATIONS 에 단계 추가.
+SCHEMA_VERSION = 4  # PRAGMA user_version. 스키마 변경 시 +1 하고 _MIGRATIONS 에 단계 추가.
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS product_master (
@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS item_master (
     category_major TEXT, category_mid TEXT, value_type TEXT, unit TEXT,
     UNIQUE(item_canonical)
 );
+CREATE INDEX IF NOT EXISTS idx_item_master_value_type ON item_master(value_type);
+CREATE INDEX IF NOT EXISTS idx_product_master_family ON product_master(family_product);
 CREATE TABLE IF NOT EXISTS item_alias (raw_name TEXT PRIMARY KEY, item_id INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS item_spec (
     item_id INTEGER NOT NULL, product_name TEXT NOT NULL, revision REAL NOT NULL,
@@ -54,6 +56,7 @@ CREATE TABLE IF NOT EXISTS fail_case (
 );
 CREATE INDEX IF NOT EXISTS idx_fail_case_item_class ON fail_case(item_class);
 CREATE INDEX IF NOT EXISTS idx_fail_case_product ON fail_case(product_name);
+CREATE INDEX IF NOT EXISTS idx_fail_case_item ON fail_case(item_id);
 CREATE TABLE IF NOT EXISTS raw_metrics (
     case_id TEXT NOT NULL, run_id INTEGER NOT NULL,
     cpk REAL, cpl REAL, cpu REAL, cp REAL, mean REAL, stdev REAL, min REAL, max REAL,
@@ -74,8 +77,16 @@ CREATE TABLE IF NOT EXISTS evaluation (
     eval_id INTEGER PRIMARY KEY AUTOINCREMENT, case_id TEXT NOT NULL, run_id INTEGER NOT NULL,
     engine_version TEXT NOT NULL, model_version TEXT NOT NULL DEFAULT '',
     status TEXT, confidence REAL,
-    data_completeness TEXT, comment TEXT, created_at INTEGER NOT NULL,
+    data_completeness TEXT, comment TEXT, created_at INTEGER NOT NULL, updated_at INTEGER,
     UNIQUE(case_id, run_id, engine_version, model_version)
+);
+CREATE TABLE IF NOT EXISTS eval_precedent (  -- L5 가 참조한 선례 이력 (선례 품질 피드백/감사용)
+    eval_id INTEGER NOT NULL,
+    precedent_case_id TEXT NOT NULL,
+    rank INTEGER, similarity REAL,
+    PRIMARY KEY (eval_id, precedent_case_id),
+    FOREIGN KEY (eval_id) REFERENCES evaluation(eval_id),
+    FOREIGN KEY (precedent_case_id) REFERENCES fail_case(case_id)
 );
 CREATE TABLE IF NOT EXISTS eval_evidence (
     eval_id INTEGER NOT NULL, signal_code TEXT NOT NULL, value REAL, weight REAL, note TEXT,
@@ -94,7 +105,8 @@ CREATE TABLE IF NOT EXISTS label (
 CREATE INDEX IF NOT EXISTS idx_label_case ON label(case_id);
 CREATE TABLE IF NOT EXISTS case_outcome (
     outcome_id INTEGER PRIMARY KEY AUTOINCREMENT, case_id TEXT NOT NULL, label_id INTEGER,
-    action TEXT, condition TEXT, result TEXT, resolved_by TEXT, resolved_at INTEGER, note TEXT
+    action TEXT, condition TEXT, result TEXT, resolved_by TEXT, resolved_at INTEGER, note TEXT,
+    created_at INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_outcome_case ON case_outcome(case_id);
 CREATE TABLE IF NOT EXISTS engine_version_registry (
@@ -162,7 +174,31 @@ def _migrate_v2_to_v3(conn):
         conn.execute("ALTER TABLE ingest_run ADD COLUMN session_id TEXT")
 
 
-_MIGRATIONS = {1: _migrate_v1_to_v2, 2: _migrate_v2_to_v3}  # {from_version: fn} — from → from+1
+def _migrate_v3_to_v4(conn):
+    """v4: 선례검색 인덱스 3개 + evaluation.updated_at(재판정 시각) +
+    case_outcome.created_at(시계열 수집용) + eval_precedent(선례 사용 이력).
+    인덱스/테이블은 IF NOT EXISTS 로 SCHEMA 재실행과 겹쳐도 안전, 컬럼은 존재 검사 후 ALTER."""
+    if "updated_at" not in {r[1] for r in conn.execute("PRAGMA table_info(evaluation)")}:
+        conn.execute("ALTER TABLE evaluation ADD COLUMN updated_at INTEGER")
+    if "created_at" not in {r[1] for r in conn.execute("PRAGMA table_info(case_outcome)")}:
+        conn.execute("ALTER TABLE case_outcome ADD COLUMN created_at INTEGER")
+    conn.executescript("""
+        CREATE INDEX IF NOT EXISTS idx_item_master_value_type ON item_master(value_type);
+        CREATE INDEX IF NOT EXISTS idx_product_master_family ON product_master(family_product);
+        CREATE INDEX IF NOT EXISTS idx_fail_case_item ON fail_case(item_id);
+        CREATE TABLE IF NOT EXISTS eval_precedent (
+            eval_id INTEGER NOT NULL,
+            precedent_case_id TEXT NOT NULL,
+            rank INTEGER, similarity REAL,
+            PRIMARY KEY (eval_id, precedent_case_id),
+            FOREIGN KEY (eval_id) REFERENCES evaluation(eval_id),
+            FOREIGN KEY (precedent_case_id) REFERENCES fail_case(case_id)
+        );
+    """)
+
+
+_MIGRATIONS = {1: _migrate_v1_to_v2, 2: _migrate_v2_to_v3,
+               3: _migrate_v3_to_v4}  # {from_version: fn} — from → from+1
 
 
 def _migrate(conn):
@@ -350,7 +386,8 @@ def save_evaluation(case_id, run_id, engine_version, model_version, status,
              VALUES (?,?,?,?,?,?,?,?,?)
              ON CONFLICT(case_id,run_id,engine_version,model_version) DO UPDATE SET
                status=excluded.status, confidence=excluded.confidence,
-               data_completeness=excluded.data_completeness, comment=excluded.comment"""
+               data_completeness=excluded.data_completeness, comment=excluded.comment,
+               updated_at=excluded.created_at"""
     with _scope(conn) as c:
         c.execute(sql, (case_id, run_id, engine_version, model_version, status,
                         confidence, data_completeness, comment, _now()))
@@ -396,11 +433,23 @@ def insert_case_outcome(case_id, label_id, action, condition, result, resolved_b
     from .pipeline._rules import validate_outcome  # lazy: 순환 import 회피
     validate_outcome(action, result)
     sql = """INSERT INTO case_outcome (case_id,label_id,action,condition,result,
-             resolved_by,resolved_at,note) VALUES (?,?,?,?,?,?,?,?)"""
+             resolved_by,resolved_at,note,created_at) VALUES (?,?,?,?,?,?,?,?,?)"""
     with _scope(conn) as c:
         cur = c.execute(sql, (case_id, label_id, action, condition, result,
-                              resolved_by, resolved_at, note))
+                              resolved_by, resolved_at, note, _now()))
         return cur.lastrowid
+
+
+def save_eval_precedents(eval_id, precedents: list, conn=None) -> None:
+    """L5 가 참조한 선례 이력 저장 — rank(관련도 순위 1-based) + similarity.
+    case_id 없는 행(RAG 백엔드 등)은 skip. 재평가 시 같은 (eval, case) 는 갱신."""
+    with _scope(conn) as c:
+        for rank, p in enumerate(precedents, start=1):
+            if not p.get("case_id"):
+                continue
+            c.execute("""INSERT OR REPLACE INTO eval_precedent
+                         (eval_id,precedent_case_id,rank,similarity) VALUES (?,?,?,?)""",
+                      (eval_id, p["case_id"], rank, p.get("similarity")))
 
 
 def upsert_engine_version_registry(engine_version, thresholds_ref=None, thresholds_hash=None,

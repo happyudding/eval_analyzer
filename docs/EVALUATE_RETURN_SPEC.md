@@ -33,7 +33,7 @@ def evaluate(run_input: dict, *, engine_version=None, model_version=None, persis
 | `item_class` | str | `category_major\|value_type\|bin` (`NON_TRIM\|A\|3`). 분류/필터. |
 | `bin` | int | fail bin 번호. join 키의 일부. **cpk 트리거(yield fail 없는 marginal)면 PASS_BIN=1**. |
 | **`issue_category`** | enum | ★ `YIELD \| CPK \| ETC`. Issue Table 버킷. ETC 자동 채움(§5). |
-| `status` | enum | ★ `CRITICAL \| MAJOR \| MINOR \| MONITOR` 4단계. 심각도 뱃지 / 정렬 키. |
+| `status` | enum | ★ `CRITICAL \| MAJOR \| MINOR \| MONITOR \| OK` 5단계. 심각도 뱃지 / 정렬 키. |
 | `primary_signature` | str | 대표 발화 룰 (`LOW_CPK`). |
 | `secondary_signatures` | list[str] | 보조 룰 목록. |
 | `confidence` | float 0–1 | 판정 신뢰도 (0.9). |
@@ -43,12 +43,13 @@ def evaluate(run_input: dict, *, engine_version=None, model_version=None, persis
 | `signatures` | list[obj] | 룰별 breakdown `{id, role, evidence[], action_ko}`. 상세 패널. |
 | `precedents` | list[obj] | 과거 선례 `{action, result, comment, product_name, family_product}`. 없으면 `[]`. |
 
-### status 심각도 4단계
-severity rank: `MONITOR < MINOR < MAJOR < CRITICAL`. UI 정렬·색상은 이 순서.
+### status 심각도 (5단계)
+severity rank: `OK < MONITOR < MINOR < MAJOR < CRITICAL`. UI 정렬·색상은 이 순서.
 - **CRITICAL** — cpk 극저 + yield 붕괴 등 trump 조건. 최우선 조치.
 - **MAJOR** — 유의 signature 발화. 근본 점검 필요.
 - **MINOR** — 경미 이상. 모니터링 대상.
-- **MONITOR** — 추세 관찰. 즉시 조치 불요.
+- **MONITOR** — signature 0건이지만 데이터 결측(partial/low) — 판단 유보, 추세 관찰.
+- **OK** — signature 0건 + data_completeness=full — 통계적 정상 확정.
 
 ### evidence vs signatures (헷갈리기 쉬움)
 같은 근거를 두 방식으로 노출. 표에는 `comment`+`status`만, 상세 패널에서 `signatures` 를 펼치는 구성 권장.

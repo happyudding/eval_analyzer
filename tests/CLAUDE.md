@@ -1,6 +1,6 @@
 # tests — 테스트 스위트 (블록 진입점)
 
-`python -m pytest -q` (현재 **48 통과**). DB 테스트는 전부 tmp 격리 — 운영 `eval.db` 오염 없음.
+`python -m pytest -q` (현재 **76 통과**). DB 테스트는 전부 tmp 격리 — 운영 `eval.db` 오염 없음.
 상위 규칙 [../CLAUDE.md](../CLAUDE.md).
 
 ## 파일 지도
@@ -11,8 +11,10 @@
 | `test_features.py` | L2 robust 산포·spec margin·공간 feature. |
 | `test_signatures_status.py` | L3 signature 발화 + L4 status/trump/specificity. |
 | `test_ingest_raw_df.py` | L0 정본 raw_df(6-메타행) 파싱·fail 매핑. **정본 레이아웃 기준선**. |
-| `test_store.py` | store CRUD + `make_case_id` idempotent + `search_precedents`. |
-| `test_e2e.py` | `evaluate()` 전 구간 E2E. |
+| `test_store.py` | store CRUD + `make_case_id` idempotent + `search_precedents` + 스키마 v4(eval_precedent/updated_at). |
+| `test_e2e.py` | `evaluate()` 전 구간 E2E + 입력키 검증(raw_df/raw_table/items 부재 시 ValueError). |
+| `test_calibrate.py` | `recalibrate()` 분위수 → thresholds item_class 갱신 + 버전 등록 (**thresholds 는 tmp 복사본으로 격리**). |
+| `test_db_input_import.py` | db_input label(human_status/root_cause)+case_outcome 적재·idempotent. |
 | `integration/test_df_honey_eval.py` | df_honey → run_input 어댑터 경로(raw_table) 대량 평가. |
 | `integration/adapter.py` | `df_honey_to_run_input` — report_server 쪽 어댑터 모사(eval_engine import 안 함). |
 

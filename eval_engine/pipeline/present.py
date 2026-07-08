@@ -1,6 +1,6 @@
 """L6 Present — 결과 직렬화 + eval.db 적재.
 
-persist: raw_metrics/features/evaluation/eval_evidence/case_signature 저장(store CRUD).
+persist: raw_metrics/features/evaluation/eval_evidence/case_signature/eval_precedent 저장(store CRUD).
   ※ raw(per-DUT)는 저장 안 함 — m/f 의 계산값만.
 to_result: RunResult.cases[i] dict (docs/INTEGRATION_CONTRACT §4).
 """
@@ -23,7 +23,7 @@ def should_store(case_ctx, metrics, sig_result) -> bool:
 
 
 def persist(run_ctx, case_ctx, raw_metrics, features, verdict, sig_result, comment,
-            engine_version, model_version):
+            engine_version, model_version, precedents=None):
     run_id = run_ctx.get("run_id")
     case_id = case_ctx["case_id"]
     with store.get_conn() as conn:
@@ -45,6 +45,7 @@ def persist(run_ctx, case_ctx, raw_metrics, features, verdict, sig_result, comme
         sig_rows += [{"id": sid, "role": "secondary", "score": None}
                      for sid in verdict.get("secondary_signatures", [])]
         store.save_case_signature(eval_id, sig_rows, conn=conn)
+        store.save_eval_precedents(eval_id, precedents or [], conn=conn)
 
 
 def to_result(case_ctx, verdict, sig_result, comment, precedents) -> dict:

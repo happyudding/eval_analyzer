@@ -16,9 +16,13 @@
 ## 입력 CSV 컬럼
 ```
 product_name, product_type, family_product, lot_id, wafer_number, revision,
-item_name, value_type, bin, USL, LSL, average, stdev, human_comment, session_id
+item_name, value_type, bin, USL, LSL, average, stdev, human_comment, session_id,
+human_status, root_cause_category, outcome_action, outcome_condition, outcome_result
 ```
 필수: `product_name, product_type, family_product, item_name, value_type, bin`.
+- `human_status`/`root_cause_category` → label (calibrate 의 룰 검증 소비 대상).
+- `outcome_*` → case_outcome (선례 action/result 표시. action/result 는
+  rules/outcome_taxonomy.yaml 어휘로 검증 — 미정의 값이면 에러).
 
 ## 동작 요점
 - **제품군별 파일 분리**: `(product_type, family_product, session_id)` 로 그룹핑 → 그룹마다
@@ -26,7 +30,7 @@ item_name, value_type, bin, USL, LSL, average, stdev, human_comment, session_id
 - **엔진 규칙 재사용**: `_alias_map` / `_canonicalize` / `_classify_category_major` / `_validate_product_meta`
   를 `eval_engine.pipeline.ingest` 에서 import(import 방향 db_input → eval_engine, 규칙 위반 아님).
 - **idempotent**: `make_case_id` 자연키 upsert + 같은 (source_file, session_id) run 재사용 →
-  재실행해도 중복 없이 갱신. human_comment 는 case 당 label 1건만(중복 삽입 방지).
+  재실행해도 중복 없이 갱신. label/case_outcome 은 case 당 1건만(중복 삽입 방지).
 - `average`/`stdev`/USL/LSL 있으면 `_cpk_summary`(CODE_TO_PORT §2)로 cpk 계산해 raw_metrics 저장.
 
 ## ⚠ 주의

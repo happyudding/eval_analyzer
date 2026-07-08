@@ -94,12 +94,71 @@ def test_data_completeness_levels():
     assert v_low["data_completeness"] == "low"
 
 
-def test_no_signature_gives_monitor():
+def test_no_signature_full_data_gives_ok():
     case = _case()
-    feats = _full_features()
+    feats = _full_features()  # 공간 포함 full completeness
     raw = {"yield": 0.99, "cpk": 2.0}
     sig = signatures.evaluate(case, feats, raw)
     assert sig["signatures"] == []
     verdict = status.decide(case, feats, sig)
-    assert verdict["status"] == "MONITOR"
+    assert verdict["status"] == "OK"          # 정상 확정 (signature 0건 + full)
     assert verdict["primary_signature"] is None
+
+
+def test_no_signature_incomplete_data_keeps_monitor():
+    case = _case()
+    raw = {"yield": 0.99, "cpk": 2.0}
+    # partial(공간 결측) — 결측을 양호로 오판하지 않음
+    feats_p = _full_features(edge_fail_ratio=None)
+    v_p = status.decide(case, feats_p, signatures.evaluate(case, feats_p, raw))
+    assert v_p["status"] == "MONITOR"
+    # low(n_dut=0)
+    feats_l = _full_features(n_dut=0, edge_fail_ratio=None)
+    v_l = status.decide(case, feats_l, signatures.evaluate(case, feats_l, raw))
+    assert v_l["status"] == "MONITOR"
+
+
+def test_outlier_warn_fires_between_warn_and_bad():
+    case = _case()
+    # warn(0.02) < 0.03 < bad(0.05) → OUTLIER_WARN 만 발화(MINOR)
+    feats = _full_features(outlier_ratio=0.03)
+    raw = {"yield": 0.95, "cpk": 1.5}
+    sig = signatures.evaluate(case, feats, raw)
+    ids = [s["id"] for s in sig["signatures"]]
+    assert "OUTLIER_WARN" in ids
+    assert "SEVERE_OUTLIER" not in ids
+    verdict = status.decide(case, feats, sig)
+    assert verdict["status"] == "MINOR"
+
+
+def test_code_rail_fires_on_code_edge_hit():
+    case = _case()
+    feats = _full_features(code_edge_hit=0.10, limit_hit_ratio=0.10)
+    raw = {"yield": 0.95, "cpk": 1.5}
+    sig = signatures.evaluate(case, feats, raw)
+    assert "CODE_RAIL" in [s["id"] for s in sig["signatures"]]
+
+
+def test_code_rail_not_fires_when_feature_missing():
+    case = _case()
+    # code_edge_hit 는 CODE item 에만 계산 — None(비 CODE)이면 applies=False
+    feats = _full_features(limit_hit_ratio=0.10)
+    raw = {"yield": 0.95, "cpk": 1.5}
+    sig = signatures.evaluate(case, feats, raw)
+    assert "CODE_RAIL" not in [s["id"] for s in sig["signatures"]]
+
+
+def test_heavy_tail_fires_with_enough_samples():
+    case = _case()
+    feats = _full_features(kurtosis=3.0, n_dut=100)  # > kurtosis_warn(2.0)
+    raw = {"yield": 0.95, "cpk": 1.5}
+    sig = signatures.evaluate(case, feats, raw)
+    assert "HEAVY_TAIL" in [s["id"] for s in sig["signatures"]]
+
+
+def test_heavy_tail_disabled_when_few_samples():
+    case = _case()
+    feats = _full_features(kurtosis=3.0, n_dut=5)  # 고차모멘트 min-n 가드
+    raw = {"yield": 0.95, "cpk": 1.5}
+    sig = signatures.evaluate(case, feats, raw)
+    assert "HEAVY_TAIL" not in [s["id"] for s in sig["signatures"]]

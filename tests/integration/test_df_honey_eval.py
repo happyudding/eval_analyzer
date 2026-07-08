@@ -16,7 +16,7 @@ _CSV = r"f:/COINAPI/mass_huge_W01_W07/mass_huge_W01.csv"
 _REQUIRED_KEYS = {"case_id", "item_canonical", "item_class", "bin", "status",
                   "primary_signature", "secondary_signatures", "confidence",
                   "data_completeness", "comment", "evidence", "precedents"}
-_VALID_STATUS = {"CRITICAL", "MAJOR", "MINOR", "MONITOR"}
+_VALID_STATUS = {"CRITICAL", "MAJOR", "MINOR", "MONITOR", "OK"}
 
 
 def _load_honey(nrows=105, ncols=35):

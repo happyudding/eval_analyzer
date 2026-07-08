@@ -352,9 +352,14 @@ def _build_cases(meta, run_input, persist, conn):
     if raw_df is not None:              # 신규 df 포맷 (DataFrame — 진리값 모호 → is not None)
         cases = _ingest_raw_df(meta, raw_df, persist, conn, alias)
     elif raw_table:
+        missing = [k for k in ("item_columns", "rows") if k not in raw_table]
+        if missing:
+            raise ValueError(f"raw_table 필수 키 누락: {missing}")
         cases = _ingest_raw_table(meta, raw_table, persist, conn, alias)
-    else:
+    elif "items" in run_input:
         cases = _ingest_degrade(meta, run_input["items"], persist, conn, alias)
+    else:
+        raise ValueError("run_input 에 raw_df / raw_table / items 중 하나가 필요")
     for case in cases:
         case["product_name"] = meta.get("product_name")
         case["lot_id"] = meta.get("lot_id")

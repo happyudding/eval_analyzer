@@ -18,7 +18,7 @@ _SAMPLE_GLOB = os.path.join(
 _REQUIRED_KEYS = {"case_id", "item_canonical", "item_raw", "item_class", "bin", "status",
                   "issue_category", "primary_signature", "secondary_signatures", "confidence",
                   "data_completeness", "comment", "evidence", "precedents"}
-_VALID_STATUS = {"CRITICAL", "MAJOR", "MINOR", "MONITOR"}
+_VALID_STATUS = {"CRITICAL", "MAJOR", "MINOR", "MONITOR", "OK"}
 _VALID_CATEGORY = {"YIELD", "CPK", "ETC"}
 
 
